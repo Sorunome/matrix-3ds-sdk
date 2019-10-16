@@ -11,7 +11,7 @@ private:
 	std::string token;
 public:
 	MatrixClient(std::string homeserverUrl, std::string matrixToken);
-	Result doRequest(json_t* content, HTTPC_RequestMethod method, std::string path, json_t* body = NULL);
+	Result doRequest(json_t* content, const char* method, std::string path, json_t* body = NULL);
 };
 
 #endif // _matrixclient_h_
