@@ -22,8 +22,6 @@ static u32 *SOC_buffer = NULL;
 Client::Client(std::string homeserverUrl, std::string matrixToken, Store* clientStore) {
 	hsUrl = homeserverUrl;
 	token = matrixToken;
-	requestId = 0;
-	stopSyncing = false;
 	if (!clientStore) {
 		clientStore = new MemoryStore();
 	}
@@ -31,6 +29,9 @@ Client::Client(std::string homeserverUrl, std::string matrixToken, Store* client
 }
 
 std::string Client::userId() {
+	if (userIdCache != "") {
+		return userIdCache;
+	}
 	json_t* ret = doRequest("GET", "/_matrix/client/r0/account/whoami");
 	if (!ret) {
 		return "";
@@ -42,7 +43,8 @@ std::string Client::userId() {
 	}
 	const char* userIdStr = json_string_value(userId);
 	json_decref(ret);
-	return userIdStr;
+	userIdCache = std::string(userIdStr);
+	return userIdCache;
 }
 
 std::string Client::sendTextMessage(std::string roomId, std::string text) {
@@ -66,7 +68,6 @@ std::string Client::sendEvent(std::string roomId, std::string eventType, json_t*
 		return "";
 	}
 	json_t* eventId = json_object_get(ret, "event_id");
-	free(ret);
 	if (!eventId) {
 		json_decref(ret);
 		return "";
@@ -74,6 +75,27 @@ std::string Client::sendEvent(std::string roomId, std::string eventType, json_t*
 	const char* eventIdStr = json_string_value(eventId);
 	json_decref(ret);
 	return eventIdStr;
+}
+
+void startSyncLoopWithoutClass(void* arg) {
+	printf("%lld\n", (u64)arg);
+	((Client*)arg)->startSync();
+}
+
+void Client::startSyncLoop() {
+	stopSyncLoop(); // first we stop an already running sync loop
+	stopSyncing = false;
+	s32 prio = 0;
+//	startSyncLoopWithoutClass(this);
+	printf("%lld\n", (u64)this);
+	svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
+	syncThread = threadCreate(startSyncLoopWithoutClass, this, 8*1024, prio-1, -2, true);
+}
+
+void Client::stopSyncLoop() {
+	stopSyncing = true;
+	//threadJoin(syncThread, U64_MAX);
+	//threadFree(syncThread);
 }
 
 void Client::processSync(json_t* sync) {
@@ -145,6 +167,8 @@ void Client::startSync() {
 		processSync(ret);
 		json_decref(ret);
 	}
+	svcSleepThread((u64)1000000ULL * (u64)200);
+	startSync();
 }
 
 json_t* Client::doSync(std::string token) {

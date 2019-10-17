@@ -18,10 +18,11 @@ private:
 public:
 	std::string hsUrl;
 	std::string token;
-	int requestId;
-	bool stopSyncing;
 	Store* store;
-	void startSync();
+	std::string userIdCache = "";
+	int requestId = 0;
+	bool stopSyncing = false;
+	Thread syncThread;
 	void processSync(json_t* sync);
 	json_t* doSync(std::string token);
 	json_t* doRequest(const char* method, std::string path, json_t* body = NULL);
@@ -31,6 +32,9 @@ public:
 	std::string sendTextMessage(std::string roomId, std::string text);
 	std::string sendMessage(std::string roomId, json_t* content);
 	std::string sendEvent(std::string roomId, std::string eventType, json_t* content);
+	void startSyncLoop();
+	void stopSyncLoop();
+	void startSync();
 };
 
 }; // namespace Matrix
