@@ -15,6 +15,14 @@
 #define SOC_BUFFERSIZE  0x100000
 #define SYNC_TIMEOUT 10000
 
+#define DEBUG 1
+
+#if DEBUG
+#define D 
+#else
+#define D for(;0;)
+#endif
+
 namespace Matrix {
 
 static u32 *SOC_buffer = NULL;
@@ -193,7 +201,7 @@ void Client::startSyncLoop() {
 	isSyncing = true;
 	stopSyncing = false;
 	s32 prio = 0;
-	printf("%lld\n", (u64)this);
+	D printf("%lld\n", (u64)this);
 	svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
 	syncThread = threadCreate(startSyncLoopWithoutClass, this, 8*1024, prio-1, -2, true);
 }
@@ -234,54 +242,53 @@ void Client::processSync(json_t* sync) {
 	if (joinedRooms) {
 		json_object_foreach(joinedRooms, roomId, room) {
 			// rooms that we are joined
-			printf(roomId);
-			printf(":\n");
+			D printf("%s:\n", roomId);
 			json_t* timeline = json_object_get(room, "timeline");
 			if (!timeline) {
-				printf("no timeline\n");
+				D printf("no timeline\n");
 				continue;
 			}
 			json_t* events = json_object_get(timeline, "events");
 			if (!events) {
-				printf("no events\n");
+				D printf("no events\n");
 				continue;
 			}
 			size_t index;
 			json_t* event;
 			json_array_foreach(events, index, event) {
 				json_t* eventType = json_object_get(event, "type");
-				printf(json_string_value(eventType));
-				printf("\n");
+				D printf("%s\n", json_string_value(eventType));
 			}
 		}
 	}
 }
 
 void Client::startSync() {
-	std::string token = store->getSyncToken();
-	if (stopSyncing) {
-		return;
-	}
-	json_t* ret = doSync(token);
-	if (ret) {
-		// set the token for the next batch
-		json_t* token = json_object_get(ret, "next_batch");
-		if (token) {
-			printf("Found next batch\n");
-			store->setSyncToken(json_string_value(token));
-		} else {
-			printf("No next batch\n");
-			store->setSyncToken("");
+	while (true) {
+		std::string token = store->getSyncToken();
+		if (stopSyncing) {
+			return;
 		}
-		processSync(ret);
-		json_decref(ret);
+		json_t* ret = doSync(token);
+		if (ret) {
+			// set the token for the next batch
+			json_t* token = json_object_get(ret, "next_batch");
+			if (token) {
+				D printf("Found next batch\n");
+				store->setSyncToken(json_string_value(token));
+			} else {
+				D printf("No next batch\n");
+				store->setSyncToken("");
+			}
+			processSync(ret);
+			json_decref(ret);
+		}
+		svcSleepThread((u64)1000000ULL * (u64)200);
 	}
-	svcSleepThread((u64)1000000ULL * (u64)200);
-	startSync();
 }
 
 json_t* Client::doSync(std::string token) {
-	printf("Doing sync with token %s\n", token.c_str());
+	D printf("Doing sync with token %s\n", token.c_str());
 	
 	std::string query = "?full_state=false&timeout=" + std::to_string(SYNC_TIMEOUT);
 	if (token != "") {
@@ -299,7 +306,7 @@ json_t* Client::doRequest(const char* method, std::string path, json_t* body) {
 	std::string url = hsUrl + path;
 	requestId++;
 	
-	printf("Opening Request\n%s\n", url.c_str());
+	D printf("Opening Request %d\n%s\n", requestId, url.c_str());
 
 	if (!SOC_buffer) {
 		SOC_buffer = (u32*)memalign(0x1000, 0x100000);
@@ -314,7 +321,7 @@ json_t* Client::doRequest(const char* method, std::string path, json_t* body) {
 	CURL* curl = curl_easy_init();
 	CURLcode res;
 	if (!curl) {
-		printf("curl init failed\n");
+		D printf("curl init failed\n");
 		return NULL;
 	}
 	std::string readBuffer;
@@ -346,15 +353,15 @@ json_t* Client::doRequest(const char* method, std::string path, json_t* body) {
 	res = curl_easy_perform(curl);
 	curl_easy_cleanup(curl);
 	if (res != CURLE_OK) {
-		printf("curl res not ok %d\n", res);
+		D printf("curl res not ok %d\n", res);
 		return NULL;
 	}
 
-	printf("%s\n", readBuffer.c_str());
+//	D printf("%s\n", readBuffer.c_str());
 	json_error_t error;
 	json_t* content = json_loads(readBuffer.c_str(), 0, &error);
 	if (!content) {
-		printf("Failed to parse json\n");
+		D printf("Failed to parse json\n");
 		return NULL;
 	}
 	return content;
