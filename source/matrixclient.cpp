@@ -28,7 +28,7 @@ Client::Client(std::string homeserverUrl, std::string matrixToken, Store* client
 	store = clientStore;
 }
 
-std::string Client::userId() {
+std::string Client::getUserId() {
 	if (userIdCache != "") {
 		return userIdCache;
 	}
@@ -47,7 +47,43 @@ std::string Client::userId() {
 	return userIdCache;
 }
 
-std::string Client::sendTextMessage(std::string roomId, std::string text) {
+std::string Client::resolveRoom(std::string alias) {
+	if (alias[0] == '!') {
+		return alias; // this is already a room ID, nothing to do
+	}
+	json_t* ret = doRequest("GET", "/_matrix/client/r0/directory/room/" + urlencode(alias));
+	if (!ret) {
+		return "";
+	}
+	json_t* roomId = json_object_get(ret, "room_id");
+	if (!roomId) {
+		json_decref(ret);
+		return "";
+	}
+	const char* roomIdStr = json_string_value(roomId);
+	json_decref(ret);
+	return roomIdStr;
+}
+
+std::string Client::sendEmote(std::string roomId, std::string text) {
+	json_t* request = json_object();
+	json_object_set_new(request, "msgtype", json_string("m.emote"));
+	json_object_set_new(request, "body", json_string(text.c_str()));
+	std::string eventId = sendMessage(roomId, request);
+	json_decref(request);
+	return eventId;
+}
+
+std::string Client::sendNotice(std::string roomId, std::string text) {
+	json_t* request = json_object();
+	json_object_set_new(request, "msgtype", json_string("m.notice"));
+	json_object_set_new(request, "body", json_string(text.c_str()));
+	std::string eventId = sendMessage(roomId, request);
+	json_decref(request);
+	return eventId;
+}
+
+std::string Client::sendText(std::string roomId, std::string text) {
 	json_t* request = json_object();
 	json_object_set_new(request, "msgtype", json_string("m.text"));
 	json_object_set_new(request, "body", json_string(text.c_str()));
@@ -61,6 +97,7 @@ std::string Client::sendMessage(std::string roomId, json_t* content) {
 }
 
 std::string Client::sendEvent(std::string roomId, std::string eventType, json_t* content) {
+	roomId = resolveRoom(roomId);
 	std::string txid = std::to_string(time(NULL)) + "_REQ_" + std::to_string(requestId);
 	std::string path = "/_matrix/client/r0/rooms/" + urlencode(roomId) + "/send/" + urlencode(eventType) + "/" + urlencode(txid);
 	json_t* ret = doRequest("PUT", path, content);
@@ -77,8 +114,47 @@ std::string Client::sendEvent(std::string roomId, std::string eventType, json_t*
 	return eventIdStr;
 }
 
+std::string Client::sendStateEvent(std::string roomId, std::string type, std::string stateKey, json_t* content) {
+	roomId = resolveRoom(roomId);
+	std::string path = "/_matrix/client/r0/rooms/" + urlencode(roomId) + "/state/" + urlencode(type) + "/" + urlencode(stateKey);
+	json_t* ret = doRequest("PUT", path, content);
+	if (!ret) {
+		return "";
+	}
+	json_t* eventId = json_object_get(ret, "event_id");
+	if (!eventId) {
+		json_decref(ret);
+		return "";
+	}
+	const char* eventIdStr = json_string_value(eventId);
+	json_decref(ret);
+	return eventIdStr;
+}
+
+std::string Client::redactEvent(std::string roomId, std::string eventId, std::string reason) {
+	roomId = resolveRoom(roomId);
+	std::string txid = std::to_string(time(NULL)) + "_REQ_" + std::to_string(requestId);
+	json_t* content = json_object();
+	if (reason != "") {
+		json_object_set_new(content, "reason", json_string(reason.c_str()));
+	}
+	std::string path = "/_matrix/client/r0/rooms/" + urlencode(roomId) + "/redact/" + urlencode(eventId) + "/" + txid;
+	json_t* ret = doRequest("PUT", path, content);
+	json_decref(content);
+	if (!ret) {
+		return "";
+	}
+	json_t* retEventId = json_object_get(ret, "event_id");
+	if (!retEventId) {
+		json_decref(ret);
+		return "";
+	}
+	const char* eventIdStr = json_string_value(retEventId);
+	json_decref(ret);
+	return eventIdStr;
+}
+
 void startSyncLoopWithoutClass(void* arg) {
-	printf("%lld\n", (u64)arg);
 	((Client*)arg)->startSync();
 }
 
@@ -172,9 +248,7 @@ void Client::startSync() {
 }
 
 json_t* Client::doSync(std::string token) {
-	printf("Doing sync with token ");
-	printf(token.c_str());
-	printf("\n");
+	printf("Doing sync with token %s\n", token.c_str());
 	
 	std::string query = "?full_state=false&timeout=" + std::to_string(SYNC_TIMEOUT);
 	if (token != "") {
@@ -192,9 +266,7 @@ json_t* Client::doRequest(const char* method, std::string path, json_t* body) {
 	std::string url = hsUrl + path;
 	requestId++;
 	
-	printf("Opening Request\n");
-	printf(url.c_str());
-	printf("\n");
+	printf("Opening Request\n%s\n", url.c_str());
 
 	if (!SOC_buffer) {
 		SOC_buffer = (u32*)memalign(0x1000, 0x100000);
@@ -237,11 +309,11 @@ json_t* Client::doRequest(const char* method, std::string path, json_t* body) {
 //	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 //	curl_easy_setopt(curl, CURLOPT_STDERR, stdout);
 	res = curl_easy_perform(curl);
+	curl_easy_cleanup(curl);
 	if (res != CURLE_OK) {
-		printf("curl res not ok %" PRId32 "\n", res);
+		printf("curl res not ok %d\n", res);
 		return NULL;
 	}
-	curl_easy_cleanup(curl);
 
 //	printf(readBuffer.c_str());
 //	printf("\n");

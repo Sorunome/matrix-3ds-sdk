@@ -28,10 +28,15 @@ public:
 	json_t* doRequest(const char* method, std::string path, json_t* body = NULL);
 public:
 	Client(std::string homeserverUrl, std::string matrixToken, Store* clientStore = NULL);
-	std::string userId();
-	std::string sendTextMessage(std::string roomId, std::string text);
+	std::string getUserId();
+	std::string resolveRoom(std::string alias);
+	std::string sendEmote(std::string roomId, std::string text);
+	std::string sendNotice(std::string roomId, std::string text);
+	std::string sendText(std::string roomId, std::string text);
 	std::string sendMessage(std::string roomId, json_t* content);
 	std::string sendEvent(std::string roomId, std::string eventType, json_t* content);
+	std::string sendStateEvent(std::string roomId, std::string type, std::string stateKey, json_t* content);
+	std::string redactEvent(std::string roomId, std::string eventId, std::string reason = "");
 	void startSyncLoop();
 	void stopSyncLoop();
 	void startSync();
