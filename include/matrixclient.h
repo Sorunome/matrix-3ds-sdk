@@ -22,12 +22,15 @@ public:
 	std::string userIdCache = "";
 	int requestId = 0;
 	bool stopSyncing = false;
+	bool isSyncing = false;
 	Thread syncThread;
 	void processSync(json_t* sync);
 	json_t* doSync(std::string token);
 	json_t* doRequest(const char* method, std::string path, json_t* body = NULL);
 public:
-	Client(std::string homeserverUrl, std::string matrixToken, Store* clientStore = NULL);
+	Client(std::string homeserverUrl, std::string matrixToken = "", Store* clientStore = NULL);
+	std::string getToken();
+	bool login(std::string username, std::string password);
 	std::string getUserId();
 	std::string resolveRoom(std::string alias);
 	std::string sendEmote(std::string roomId, std::string text);

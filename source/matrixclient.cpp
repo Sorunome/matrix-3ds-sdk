@@ -28,6 +28,36 @@ Client::Client(std::string homeserverUrl, std::string matrixToken, Store* client
 	store = clientStore;
 }
 
+std::string Client::getToken() {
+	return token;
+}
+
+bool Client::login(std::string username, std::string password) {
+	json_t* request = json_object();
+	json_object_set_new(request, "type", json_string("m.login.password"));
+	json_t* identifier = json_object();
+	json_object_set_new(identifier, "type", json_string("m.id.user"));
+	json_object_set_new(identifier, "user", json_string(username.c_str()));
+	json_object_set_new(request, "identifier", identifier);
+	json_object_set_new(request, "password", json_string(password.c_str()));
+	json_object_set_new(request, "initial_device_display_name", json_string("Nintendo 3DS"));
+
+	json_t* ret = doRequest("POST", "/_matrix/client/r0/login", request);
+	json_decref(request);
+
+	if (!ret) {
+		return false;
+	}
+	json_t* accessToken = json_object_get(ret, "access_token");
+	if (!accessToken) {
+		json_decref(ret);
+		return false;
+	}
+	token = json_string_value(accessToken);
+	json_decref(ret);
+	return true;
+}
+
 std::string Client::getUserId() {
 	if (userIdCache != "") {
 		return userIdCache;
@@ -160,9 +190,9 @@ void startSyncLoopWithoutClass(void* arg) {
 
 void Client::startSyncLoop() {
 	stopSyncLoop(); // first we stop an already running sync loop
+	isSyncing = true;
 	stopSyncing = false;
 	s32 prio = 0;
-//	startSyncLoopWithoutClass(this);
 	printf("%lld\n", (u64)this);
 	svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
 	syncThread = threadCreate(startSyncLoopWithoutClass, this, 8*1024, prio-1, -2, true);
@@ -170,8 +200,11 @@ void Client::startSyncLoop() {
 
 void Client::stopSyncLoop() {
 	stopSyncing = true;
-	//threadJoin(syncThread, U64_MAX);
-	//threadFree(syncThread);
+	if (isSyncing) {
+		threadJoin(syncThread, U64_MAX);
+		threadFree(syncThread);
+	}
+	isSyncing = false;
 }
 
 void Client::processSync(json_t* sync) {
@@ -286,7 +319,9 @@ json_t* Client::doRequest(const char* method, std::string path, json_t* body) {
 	}
 	std::string readBuffer;
 	struct curl_slist* headers = NULL;
-	headers = curl_slist_append(headers, ("Authorization: Bearer " + token).c_str());
+	if (token != "") {
+		headers = curl_slist_append(headers, ("Authorization: Bearer " + token).c_str());
+	}
 	if (body) {
 		headers = curl_slist_append(headers, "Content-Type: application/json");
 		const char* bodyStr = json_dumps(body, JSON_ENSURE_ASCII | JSON_ESCAPE_SLASH);
@@ -315,8 +350,7 @@ json_t* Client::doRequest(const char* method, std::string path, json_t* body) {
 		return NULL;
 	}
 
-//	printf(readBuffer.c_str());
-//	printf("\n");
+	printf("%s\n", readBuffer.c_str());
 	json_error_t error;
 	json_t* content = json_loads(readBuffer.c_str(), 0, &error);
 	if (!content) {
