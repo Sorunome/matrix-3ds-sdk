@@ -15,7 +15,7 @@
 #define SOC_BUFFERSIZE  0x100000
 #define SYNC_TIMEOUT 10000
 
-#define DEBUG 1
+#define DEBUG 0
 
 #if DEBUG
 #define D 
@@ -215,6 +215,10 @@ void Client::stopSyncLoop() {
 	isSyncing = false;
 }
 
+void Client::setSyncEventCallback(void (*cb)(std::string roomId, json_t* event)) {
+	sync_event_callback = cb;
+}
+
 void Client::processSync(json_t* sync) {
 	json_t* rooms = json_object_get(sync, "rooms");
 	if (!rooms) {
@@ -226,10 +230,13 @@ void Client::processSync(json_t* sync) {
 	
 	const char* roomId;
 	json_t* room;
+	size_t index;
+	json_t* event;
 	
 	if (leftRooms) {
 		json_object_foreach(leftRooms, roomId, room) {
 			// rooms that we left
+			// emit leave event with roomId
 		}
 	}
 	
@@ -253,11 +260,12 @@ void Client::processSync(json_t* sync) {
 				D printf("no events\n");
 				continue;
 			}
-			size_t index;
-			json_t* event;
 			json_array_foreach(events, index, event) {
 				json_t* eventType = json_object_get(event, "type");
 				D printf("%s\n", json_string_value(eventType));
+				if (sync_event_callback) {
+					sync_event_callback(roomId, event);
+				}
 			}
 		}
 	}

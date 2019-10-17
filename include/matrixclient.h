@@ -24,8 +24,10 @@ public:
 	bool stopSyncing = false;
 	bool isSyncing = false;
 	Thread syncThread;
+	void (* sync_event_callback)(std::string roomId, json_t* event) = 0; 
 	void processSync(json_t* sync);
 	json_t* doSync(std::string token);
+	void startSync();
 	json_t* doRequest(const char* method, std::string path, json_t* body = NULL);
 public:
 	Client(std::string homeserverUrl, std::string matrixToken = "", Store* clientStore = NULL);
@@ -40,9 +42,9 @@ public:
 	std::string sendEvent(std::string roomId, std::string eventType, json_t* content);
 	std::string sendStateEvent(std::string roomId, std::string type, std::string stateKey, json_t* content);
 	std::string redactEvent(std::string roomId, std::string eventId, std::string reason = "");
+	void setSyncEventCallback(void (*cb)(std::string roomId, json_t* event));
 	void startSyncLoop();
 	void stopSyncLoop();
-	void startSync();
 };
 
 }; // namespace Matrix
