@@ -8,6 +8,8 @@
 #include <string.h>
 #include "util.h"
 #include "memorystore.h"
+#include <string>
+#include <vector>
 
 #include <sys/socket.h>
 
@@ -115,6 +117,79 @@ std::string Client::resolveRoom(std::string alias) {
 	return roomIdStr;
 }
 
+std::vector<std::string> Client::getJoinedRooms() {
+	std::vector<std::string> rooms;
+	json_t* ret = doRequest("GET", "/_matrix/client/r0/joined_rooms");
+	json_t* roomsArr = json_object_get(ret, "joined_rooms");
+	if (!roomsArr) {
+		json_decref(ret);
+		return rooms;
+	}
+	size_t index;
+	json_t* value;
+	json_array_foreach(roomsArr, index, value) {
+		rooms.push_back(json_string_value(value));
+	}
+	json_decref(ret);
+	return rooms;
+}
+
+RoomInfo Client::getRoomInfo(std::string roomId) {
+	// if we resolve the roomId here it only resolves once
+	roomId = resolveRoom(roomId);
+	RoomInfo info = {
+		name: getRoomName(roomId),
+		topic: getRoomTopic(roomId),
+		avatar: getRoomAvatar(roomId),
+	};
+	return info;
+}
+
+std::string Client::getRoomName(std::string roomId) {
+	json_t* ret = getStateEvent(roomId, "m.room.name", "");
+	if (!ret) {
+		return "";
+	}
+	json_t* name = json_object_get(ret, "name");
+	if (!name) {
+		json_decref(ret);
+		return "";
+	}
+	std::string nameStr = json_string_value(name);
+	json_decref(ret);
+	return nameStr;
+}
+
+std::string Client::getRoomTopic(std::string roomId) {
+	json_t* ret = getStateEvent(roomId, "m.room.topic", "");
+	if (!ret) {
+		return "";
+	}
+	json_t* topic = json_object_get(ret, "topic");
+	if (!topic) {
+		json_decref(ret);
+		return "";
+	}
+	std::string topicStr = json_string_value(topic);
+	json_decref(ret);
+	return topicStr;
+}
+
+std::string Client::getRoomAvatar(std::string roomId) {
+	json_t* ret = getStateEvent(roomId, "m.room.avatar", "");
+	if (!ret) {
+		return "";
+	}
+	json_t* url = json_object_get(ret, "url");
+	if (!url) {
+		json_decref(ret);
+		return "";
+	}
+	std::string urlStr = json_string_value(url);
+	json_decref(ret);
+	return urlStr;
+}
+
 std::string Client::sendEmote(std::string roomId, std::string text) {
 	json_t* request = json_object();
 	json_object_set_new(request, "msgtype", json_string("m.emote"));
@@ -162,6 +237,12 @@ std::string Client::sendEvent(std::string roomId, std::string eventType, json_t*
 	std::string eventIdStr = json_string_value(eventId);
 	json_decref(ret);
 	return eventIdStr;
+}
+
+json_t* Client::getStateEvent(std::string roomId, std::string type, std::string stateKey) {
+	roomId = resolveRoom(roomId);
+	std::string path = "/_matrix/client/r0/rooms/" + urlencode(roomId) + "/state/" + urlencode(type) + "/" + urlencode(stateKey);
+	return doRequest("GET", path);
 }
 
 std::string Client::sendStateEvent(std::string roomId, std::string type, std::string stateKey, json_t* content) {
@@ -386,7 +467,7 @@ json_t* Client::doRequestCurl(const char* method, std::string url, json_t* body)
 		return NULL;
 	}
 
-//	D printf_top("%s\n", readBuffer.c_str());
+	D printf_top("%s\n", readBuffer.c_str());
 	json_error_t error;
 	json_t* content = json_loads(readBuffer.c_str(), 0, &error);
 	if (!content) {
@@ -498,7 +579,7 @@ json_t* Client::doRequestHttpc(const char* method, std::string url, json_t* body
 
 	httpcCloseContext(&context);
 
-	//D printf_top("%s\n", buf);
+	D printf_top("%s\n", buf);
 
 	json_error_t error;
 	json_t* content = json_loads((char*)buf, 0, &error);
