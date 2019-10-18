@@ -140,7 +140,50 @@ RoomInfo Client::getRoomInfo(std::string roomId) {
 	RoomInfo info = {
 		name: getRoomName(roomId),
 		topic: getRoomTopic(roomId),
-		avatar: getRoomAvatar(roomId),
+		avatarUrl: getRoomAvatar(roomId),
+	};
+	return info;
+}
+
+UserInfo Client::getUserInfo(std::string userId, std::string roomId) {
+	std::string displayname = "";
+	std::string avatarUrl = "";
+	if (roomId != "") {
+		// first try fetching fro the room
+		json_t* ret = getStateEvent(roomId, "m.room.member", userId);
+		if (ret) {
+			json_t* val;
+			val = json_object_get(ret, "displayname");
+			if (val) {
+				displayname = json_string_value(val);
+			}
+			val = json_object_get(ret, "avatar_url");
+			if (val) {
+				avatarUrl = json_string_value(val);
+			}
+			json_decref(ret);
+		}
+	}
+	if (displayname == "") {
+		// then attempt the account
+		std::string path = "/_matrix/client/r0/profile/" + urlencode(userId);
+		json_t* ret = doRequest("GET", path);
+		if (ret) {
+			json_t* val;
+			val = json_object_get(ret, "displayname");
+			if (val) {
+				displayname = json_string_value(val);
+			}
+			val = json_object_get(ret, "avatar_url");
+			if (val) {
+				avatarUrl = json_string_value(val);
+			}
+			json_decref(ret);
+		}
+	}
+	UserInfo info = {
+		displayname: displayname,
+		avatarUrl: avatarUrl,
 	};
 	return info;
 }
@@ -467,7 +510,7 @@ json_t* Client::doRequestCurl(const char* method, std::string url, json_t* body)
 		return NULL;
 	}
 
-	D printf_top("%s\n", readBuffer.c_str());
+//	D printf_top("%s\n", readBuffer.c_str());
 	json_error_t error;
 	json_t* content = json_loads(readBuffer.c_str(), 0, &error);
 	if (!content) {
@@ -579,7 +622,7 @@ json_t* Client::doRequestHttpc(const char* method, std::string url, json_t* body
 
 	httpcCloseContext(&context);
 
-	D printf_top("%s\n", buf);
+//	D printf_top("%s\n", buf);
 
 	json_error_t error;
 	json_t* content = json_loads((char*)buf, 0, &error);

@@ -17,7 +17,12 @@ public:
 struct RoomInfo {
 	std::string name;
 	std::string topic;
-	std::string avatar;
+	std::string avatarUrl;
+};
+
+struct UserInfo {
+	std::string displayname;
+	std::string avatarUrl;
 };
 
 class Client {
@@ -46,6 +51,7 @@ public:
 	std::string resolveRoom(std::string alias);
 	std::vector<std::string> getJoinedRooms();
 	RoomInfo getRoomInfo(std::string roomId);
+	UserInfo getUserInfo(std::string userId, std::string roomId = "");
 	std::string getRoomName(std::string roomId);
 	std::string getRoomTopic(std::string roomId);
 	std::string getRoomAvatar(std::string roomId);
