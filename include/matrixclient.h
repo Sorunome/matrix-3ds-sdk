@@ -25,6 +25,11 @@ struct UserInfo {
 	std::string avatarUrl;
 };
 
+enum struct RequestError : u8 {
+	none,
+	timeout,
+};
+
 class Client {
 private:
 public:
@@ -36,13 +41,14 @@ public:
 	bool stopSyncing = false;
 	bool isSyncing = false;
 	Thread syncThread;
+	RequestError lastRequestError;
 	void (* sync_event_callback)(std::string roomId, json_t* event) = 0; 
 	void processSync(json_t* sync);
-	json_t* doSync(std::string token);
+	json_t* doSync(std::string token, int timeout);
 	void startSync();
-	json_t* doRequest(const char* method, std::string path, json_t* body = NULL);
-	json_t* doRequestCurl(const char* method, std::string url, json_t* body = NULL);
-	json_t* doRequestHttpc(const char* method, std::string url, json_t* body = NULL);
+	json_t* doRequest(const char* method, std::string path, json_t* body = NULL, int timeout = 5);
+	json_t* doRequestCurl(const char* method, std::string url, json_t* body, int timeout);
+	json_t* doRequestHttpc(const char* method, std::string url, json_t* body, int timeout);
 public:
 	Client(std::string homeserverUrl, std::string matrixToken = "", Store* clientStore = NULL);
 	std::string getToken();
