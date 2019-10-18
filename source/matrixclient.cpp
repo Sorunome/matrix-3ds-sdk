@@ -15,7 +15,7 @@
 #define SOC_BUFFERSIZE  0x100000
 #define SYNC_TIMEOUT 10000
 
-#define DEBUG 0
+#define DEBUG 1
 
 #if DEBUG
 #define D 
@@ -23,9 +23,16 @@
 #define D for(;0;)
 #endif
 
+PrintConsole* topScreenConsole = NULL;
+
+#define printf_top(f_, ...) do {consoleSelect(topScreenConsole);printf((f_), ##__VA_ARGS__);} while(0)
+
 namespace Matrix {
 
+#define POST_BUFFERSIZE 0x100000
+
 static u32 *SOC_buffer = NULL;
+bool HTTPC_inited = false;
 
 Client::Client(std::string homeserverUrl, std::string matrixToken, Store* clientStore) {
 	hsUrl = homeserverUrl;
@@ -34,6 +41,10 @@ Client::Client(std::string homeserverUrl, std::string matrixToken, Store* client
 		clientStore = new MemoryStore();
 	}
 	store = clientStore;
+	if (!topScreenConsole) {
+		topScreenConsole = new PrintConsole;
+		consoleInit(GFX_TOP, topScreenConsole);
+	}
 }
 
 std::string Client::getToken() {
@@ -79,7 +90,7 @@ std::string Client::getUserId() {
 		json_decref(ret);
 		return "";
 	}
-	const char* userIdStr = json_string_value(userId);
+	std::string userIdStr = json_string_value(userId);
 	json_decref(ret);
 	userIdCache = std::string(userIdStr);
 	return userIdCache;
@@ -98,7 +109,8 @@ std::string Client::resolveRoom(std::string alias) {
 		json_decref(ret);
 		return "";
 	}
-	const char* roomIdStr = json_string_value(roomId);
+	std::string roomIdStr = json_string_value(roomId);
+	D printf_top("Room ID: %s\n", roomIdStr.c_str());
 	json_decref(ret);
 	return roomIdStr;
 }
@@ -147,7 +159,7 @@ std::string Client::sendEvent(std::string roomId, std::string eventType, json_t*
 		json_decref(ret);
 		return "";
 	}
-	const char* eventIdStr = json_string_value(eventId);
+	std::string eventIdStr = json_string_value(eventId);
 	json_decref(ret);
 	return eventIdStr;
 }
@@ -164,7 +176,7 @@ std::string Client::sendStateEvent(std::string roomId, std::string type, std::st
 		json_decref(ret);
 		return "";
 	}
-	const char* eventIdStr = json_string_value(eventId);
+	std::string eventIdStr = json_string_value(eventId);
 	json_decref(ret);
 	return eventIdStr;
 }
@@ -201,7 +213,6 @@ void Client::startSyncLoop() {
 	isSyncing = true;
 	stopSyncing = false;
 	s32 prio = 0;
-	D printf("%lld\n", (u64)this);
 	svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
 	syncThread = threadCreate(startSyncLoopWithoutClass, this, 8*1024, prio-1, -2, true);
 }
@@ -249,20 +260,20 @@ void Client::processSync(json_t* sync) {
 	if (joinedRooms) {
 		json_object_foreach(joinedRooms, roomId, room) {
 			// rooms that we are joined
-			D printf("%s:\n", roomId);
+			D printf_top("%s:\n", roomId);
 			json_t* timeline = json_object_get(room, "timeline");
 			if (!timeline) {
-				D printf("no timeline\n");
+				D printf_top("no timeline\n");
 				continue;
 			}
 			json_t* events = json_object_get(timeline, "events");
 			if (!events) {
-				D printf("no events\n");
+				D printf_top("no events\n");
 				continue;
 			}
 			json_array_foreach(events, index, event) {
 				json_t* eventType = json_object_get(event, "type");
-				D printf("%s\n", json_string_value(eventType));
+				D printf_top("%s\n", json_string_value(eventType));
 				if (sync_event_callback) {
 					sync_event_callback(roomId, event);
 				}
@@ -282,10 +293,8 @@ void Client::startSync() {
 			// set the token for the next batch
 			json_t* token = json_object_get(ret, "next_batch");
 			if (token) {
-				D printf("Found next batch\n");
 				store->setSyncToken(json_string_value(token));
 			} else {
-				D printf("No next batch\n");
 				store->setSyncToken("");
 			}
 			processSync(ret);
@@ -296,13 +305,13 @@ void Client::startSync() {
 }
 
 json_t* Client::doSync(std::string token) {
-	D printf("Doing sync with token %s\n", token.c_str());
+//	D printf_top("Doing sync with token %s\n", token.c_str());
 	
 	std::string query = "?full_state=false&timeout=" + std::to_string(SYNC_TIMEOUT);
 	if (token != "") {
 		query += "&since=" + token;
 	}
-	return doRequest("GET", "/_matrix/client/r0/sync" + query);
+	return doRequest("GET", "/_matrix/client/r0/sync" + query, NULL);
 }
 
 size_t DoRequestWriteCallback(char *contents, size_t size, size_t nmemb, void *userp) {
@@ -310,18 +319,30 @@ size_t DoRequestWriteCallback(char *contents, size_t size, size_t nmemb, void *u
 	return size * nmemb;
 }
 
+bool doingCurlRequest = false;
+
 json_t* Client::doRequest(const char* method, std::string path, json_t* body) {
 	std::string url = hsUrl + path;
 	requestId++;
-	
-	D printf("Opening Request %d\n%s\n", requestId, url.c_str());
+	if (!doingCurlRequest) {
+		doingCurlRequest = true;
+		json_t* ret = doRequestCurl(method, url, body);
+		doingCurlRequest = false;
+		return ret;
+	} else {
+		return doRequestHttpc(method, url, body);
+	}
+}
+
+json_t* Client::doRequestCurl(const char* method, std::string url, json_t* body) {
+	D printf_top("Opening Request %d with CURL\n%s\n", requestId, url.c_str());
 
 	if (!SOC_buffer) {
-		SOC_buffer = (u32*)memalign(0x1000, 0x100000);
+		SOC_buffer = (u32*)memalign(0x1000, POST_BUFFERSIZE);
 		if (!SOC_buffer) {
 			return NULL;
 		}
-		if (socInit(SOC_buffer, 0x100000) != 0) {
+		if (socInit(SOC_buffer, POST_BUFFERSIZE) != 0) {
 			return NULL;
 		}
 	}
@@ -329,7 +350,7 @@ json_t* Client::doRequest(const char* method, std::string path, json_t* body) {
 	CURL* curl = curl_easy_init();
 	CURLcode res;
 	if (!curl) {
-		D printf("curl init failed\n");
+		D printf_top("curl init failed\n");
 		return NULL;
 	}
 	std::string readBuffer;
@@ -361,15 +382,129 @@ json_t* Client::doRequest(const char* method, std::string path, json_t* body) {
 	res = curl_easy_perform(curl);
 	curl_easy_cleanup(curl);
 	if (res != CURLE_OK) {
-		D printf("curl res not ok %d\n", res);
+		D printf_top("curl res not ok %d\n", res);
 		return NULL;
 	}
 
-//	D printf("%s\n", readBuffer.c_str());
+//	D printf_top("%s\n", readBuffer.c_str());
 	json_error_t error;
 	json_t* content = json_loads(readBuffer.c_str(), 0, &error);
 	if (!content) {
-		D printf("Failed to parse json\n");
+		D printf_top("Failed to parse json\n");
+		return NULL;
+	}
+	return content;
+}
+
+json_t* Client::doRequestHttpc(const char* method, std::string url, json_t* body) {
+	D printf_top("Opening Request %d with HTTPC\n%s\n", requestId, url.c_str());
+
+	if (!HTTPC_inited) {
+		if (httpcInit(POST_BUFFERSIZE) != 0) {
+			return NULL;
+		}
+		HTTPC_inited = true;
+	}
+
+	Result ret = 0;
+	httpcContext context;
+	HTTPC_RequestMethod methodReal = HTTPC_METHOD_GET;
+	u32 statusCode = 0;
+	u32 contentSize = 0, readsize = 0, size = 0;
+	u8* buf, *lastbuf;
+	if (strcmp(method, "GET") == 0) {
+		D printf_top("method GET\n");
+		methodReal = HTTPC_METHOD_GET;
+	} else if (strcmp(method, "PUT") == 0) {
+		D printf_top("method PUT\n");
+		methodReal = HTTPC_METHOD_PUT;
+	} else if (strcmp(method, "POST") == 0) {
+		D printf_top("method POST\n");
+		methodReal = HTTPC_METHOD_POST;
+	} else if (strcmp(method, "DELETE") == 0) {
+		D printf_top("method DELETE\n");
+		methodReal = HTTPC_METHOD_DELETE;
+	}
+	do {
+		httpcOpenContext(&context, methodReal, url.c_str(), 1);
+		httpcSetSSLOpt(&context, SSLCOPT_DisableVerify);
+		httpcSetKeepAlive(&context, HTTPC_KEEPALIVE_ENABLED);
+		httpcAddRequestHeaderField(&context, "User-Agent", "3ds");
+		if (token != "") {
+			httpcAddRequestHeaderField(&context, "Authorization", ("Bearer " + token).c_str());
+		}
+		httpcAddRequestHeaderField(&context, "Connection", "Keep-Alive");
+		if (body) {
+			httpcAddRequestHeaderField(&context, "Content-Type", "application/json");
+			const char* bodyStr = json_dumps(body, JSON_ENSURE_ASCII | JSON_ESCAPE_SLASH);
+			httpcAddPostDataRaw(&context, (u32*)bodyStr, strlen(bodyStr));
+		}
+		ret = httpcBeginRequest(&context);
+		if (ret) {
+			D printf_top("Failed to perform request\n");
+			httpcCloseContext(&context);
+			return NULL;
+		}
+		httpcGetResponseStatusCode(&context, &statusCode);
+		if ((statusCode >= 301 && statusCode <= 303) || (statusCode >= 307 && statusCode <= 308)) {
+			char newUrl[0x100];
+			ret = httpcGetResponseHeader(&context, "Location", newUrl, 0x100);
+			url = std::string(newUrl);
+		}
+	} while ((statusCode >= 301 && statusCode <= 303) || (statusCode >= 307 && statusCode <= 308));
+	ret = httpcGetDownloadSizeState(&context, NULL, &contentSize);
+	if (ret != 0) {
+		httpcCloseContext(&context);
+		return NULL;
+	}
+
+	// Start with a single page buffer
+	buf = (u8*)malloc(0x1000);
+	if (!buf) {
+		httpcCloseContext(&context); 
+		return NULL;
+	}
+
+	do {
+		// This download loop resizes the buffer as data is read.
+		ret = httpcDownloadData(&context, buf+size, 0x1000, &readsize);
+		size += readsize; 
+		if (ret == (s32)HTTPC_RESULTCODE_DOWNLOADPENDING) {
+			lastbuf = buf; // Save the old pointer, in case realloc() fails.
+			buf = (u8*)realloc(buf, size + 0x1000);
+			if (!buf) { 
+				httpcCloseContext(&context);
+				free(lastbuf);
+				return NULL;
+			}
+		}
+	} while (ret == (s32)HTTPC_RESULTCODE_DOWNLOADPENDING);
+
+	if (ret) {
+		httpcCloseContext(&context);
+		free(buf);
+		return NULL;
+	}
+
+	// Resize the buffer back down to our actual final size
+	lastbuf = buf;
+	buf = (u8*)realloc(buf, size + 1); // +1 for zero-termination
+	if (!buf) { // realloc() failed.
+		httpcCloseContext(&context);
+		free(lastbuf);
+		return NULL;
+	}
+	buf[size] = '\0'; // zero-terminate
+
+	httpcCloseContext(&context);
+
+	//D printf_top("%s\n", buf);
+
+	json_error_t error;
+	json_t* content = json_loads((char*)buf, 0, &error);
+	free(buf);
+	if (!content) {
+		D printf_top("Failed to parse json\n");
 		return NULL;
 	}
 	return content;
