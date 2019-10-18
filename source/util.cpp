@@ -1,6 +1,7 @@
 #include "util.h"
 #include <string>
 #include <sstream>
+#include <3ds.h>
 
 // from http://www.zedwood.com/article/cpp-urlencode-function
 std::string urlencode(std::string s) {
@@ -22,7 +23,7 @@ std::string urlencode(std::string s) {
 	}
 	return e.str();
 }
-/*
+
 Result httpcDownloadDataTimeout(httpcContext *context, u8* buffer, u32 size, u32 *downloadedsize, u64 timeout)
 {
 	Result ret=0;
@@ -52,4 +53,3 @@ Result httpcDownloadDataTimeout(httpcContext *context, u8* buffer, u32 size, u32
 
 	return dlret;
 }
-*/

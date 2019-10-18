@@ -44,11 +44,11 @@ public:
 	RequestError lastRequestError;
 	void (* sync_event_callback)(std::string roomId, json_t* event) = 0; 
 	void processSync(json_t* sync);
-	json_t* doSync(std::string token, int timeout);
+	json_t* doSync(std::string token, u32 timeout);
 	void startSync();
-	json_t* doRequest(const char* method, std::string path, json_t* body = NULL, int timeout = 5);
-	json_t* doRequestCurl(const char* method, std::string url, json_t* body, int timeout);
-	json_t* doRequestHttpc(const char* method, std::string url, json_t* body, int timeout);
+	json_t* doRequest(const char* method, std::string path, json_t* body = NULL, u32 timeout = 5);
+	json_t* doRequestCurl(const char* method, std::string url, json_t* body, u32 timeout);
+	json_t* doRequestHttpc(const char* method, std::string url, json_t* body, u32 timeout);
 public:
 	Client(std::string homeserverUrl, std::string matrixToken = "", Store* clientStore = NULL);
 	std::string getToken();
