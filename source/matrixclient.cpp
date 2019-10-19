@@ -40,7 +40,7 @@ Client::Client(std::string homeserverUrl, std::string matrixToken, Store* client
 	hsUrl = homeserverUrl;
 	token = matrixToken;
 	if (!clientStore) {
-		clientStore = new MemoryStore();
+		clientStore = new MemoryStore;
 	}
 	store = clientStore;
 	if (!topScreenConsole) {
@@ -77,6 +77,13 @@ bool Client::login(std::string username, std::string password) {
 	token = json_string_value(accessToken);
 	json_decref(ret);
 	return true;
+}
+
+void Client::logout() {
+	json_t* ret = doRequest("POST", "/_matrix/client/r0/logout");
+	if (ret) {
+		json_decref(ret);
+	}
 }
 
 std::string Client::getUserId() {
@@ -329,7 +336,7 @@ std::string Client::redactEvent(std::string roomId, std::string eventId, std::st
 }
 
 void startSyncLoopWithoutClass(void* arg) {
-	((Client*)arg)->startSync();
+	((Client*)arg)->syncLoop();
 }
 
 void Client::startSyncLoop() {
@@ -384,20 +391,20 @@ void Client::processSync(json_t* sync) {
 	if (joinedRooms) {
 		json_object_foreach(joinedRooms, roomId, room) {
 			// rooms that we are joined
-			D printf_top("%s:\n", roomId);
+//			D printf_top("%s:\n", roomId);
 			json_t* timeline = json_object_get(room, "timeline");
 			if (!timeline) {
-				D printf_top("no timeline\n");
+//				D printf_top("no timeline\n");
 				continue;
 			}
 			json_t* events = json_object_get(timeline, "events");
 			if (!events) {
-				D printf_top("no events\n");
+//				D printf_top("no events\n");
 				continue;
 			}
 			json_array_foreach(events, index, event) {
 				json_t* eventType = json_object_get(event, "type");
-				D printf_top("%s\n", json_string_value(eventType));
+//				D printf_top("%s\n", json_string_value(eventType));
 				if (sync_event_callback) {
 					sync_event_callback(roomId, event);
 				}
@@ -406,14 +413,89 @@ void Client::processSync(json_t* sync) {
 	}
 }
 
-void Client::startSync() {
+void Client::registerFilter() {
+	static const char *json =
+		"{"
+		"	\"account_data\": {"
+		"		\"types\": ["
+		"			\"m.direct\""
+		"		]"
+		"	},"
+		"	\"presence\": {"
+		"		\"limit\": 0,"
+		"		\"types\": [\"none\"]"
+		"	},"
+		"	\"room\": {"
+		"		\"account_data\": {"
+		"			\"limit\": 0,"
+		"			\"types\": [\"none\"]"
+		"		},"
+		"		\"ephemeral\": {"
+		"			\"limit\": 0,"
+		"			\"types\": []"
+		"		},"
+		"		\"state\": {"
+		"			\"limit\": 3,"
+		"			\"types\": ["
+		"				\"m.room.name\","
+		"				\"m.room.topic\","
+		"				\"m.room.avatar\""
+		"			]"
+		"		},"
+		"		\"timeline\": {"
+		"			\"limit\": 10,"
+		"			\"lazy_load_members\": true"
+		"		}"
+		"	},"
+		"	\"event_format\": \"client\","
+		"	\"event_fields\": ["
+		"		\"type\","
+		"		\"content\","
+		"		\"sender\","
+		"		\"state_key\","
+		"		\"event_id\","
+		"		\"origin_server_ts\""
+		"	]"
+		"}";
+	
+	json_error_t error;
+	json_t* filter = json_loads(json, 0, &error);
+	if (!filter) {
+		D printf_top("PANIC!!!!! INVALID FILTER JSON!!!!\n");
+		D printf_top("%s\n", error.text);
+		D printf_top("At %d:%d (%d)\n", error.line, error.column, error.position);
+		return;
+	}
+	std::string userId = getUserId();
+	json_t* ret = doRequest("POST", "/_matrix/client/r0/user/" + urlencode(userId) + "/filter", filter);
+	json_decref(filter);
+
+	if (!ret) {
+		return;
+	}
+	json_t* filterId = json_object_get(ret, "filter_id");
+	if (!filterId) {
+		json_decref(ret);
+		return;
+	}
+	std::string filterIdStr = json_string_value(filterId);
+	json_decref(ret);
+	store->setFilterId(filterIdStr);
+}
+
+void Client::syncLoop() {
 	u32 timeout = 60;
 	while (true) {
 		std::string token = store->getSyncToken();
 		if (stopSyncing) {
 			return;
 		}
-		json_t* ret = doSync(token, timeout);
+		std::string filterId = store->getFilterId();
+		if (filterId == "") {
+			registerFilter();
+			filterId = store->getFilterId();
+		}
+		json_t* ret = doSync(token, filterId, timeout);
 		if (ret) {
 			timeout = 60;
 			// set the token for the next batch
@@ -435,10 +517,10 @@ void Client::startSync() {
 	}
 }
 
-json_t* Client::doSync(std::string token, u32 timeout) {
+json_t* Client::doSync(std::string token, std::string filter, u32 timeout) {
 //	D printf_top("Doing sync with token %s\n", token.c_str());
 	
-	std::string query = "?full_state=false&timeout=" + std::to_string(SYNC_TIMEOUT);
+	std::string query = "?full_state=false&timeout=" + std::to_string(SYNC_TIMEOUT) + "&filter=" + urlencode(filter);
 	if (token != "") {
 		query += "&since=" + token;
 	}
@@ -530,6 +612,7 @@ json_t* Client::doRequestCurl(const char* method, std::string url, json_t* body,
 	}
 
 //	D printf_top("%s\n", readBuffer.c_str());
+	D printf_top("Body size: %d\n", readBuffer.length());
 	json_error_t error;
 	json_t* content = json_loads(readBuffer.c_str(), 0, &error);
 	if (!content) {
@@ -556,16 +639,12 @@ json_t* Client::doRequestHttpc(const char* method, std::string url, json_t* body
 	u32 contentSize = 0, readsize = 0, size = 0;
 	u8* buf, *lastbuf;
 	if (strcmp(method, "GET") == 0) {
-		D printf_top("method GET\n");
 		methodReal = HTTPC_METHOD_GET;
 	} else if (strcmp(method, "PUT") == 0) {
-		D printf_top("method PUT\n");
 		methodReal = HTTPC_METHOD_PUT;
 	} else if (strcmp(method, "POST") == 0) {
-		D printf_top("method POST\n");
 		methodReal = HTTPC_METHOD_POST;
 	} else if (strcmp(method, "DELETE") == 0) {
-		D printf_top("method DELETE\n");
 		methodReal = HTTPC_METHOD_DELETE;
 	}
 	do {
@@ -652,6 +731,7 @@ json_t* Client::doRequestHttpc(const char* method, std::string url, json_t* body
 	httpcCloseContext(&context);
 
 //	D printf_top("%s\n", buf);
+	D printf_top("Body size: %lu\n", size);
 
 	json_error_t error;
 	json_t* content = json_loads((char*)buf, 0, &error);

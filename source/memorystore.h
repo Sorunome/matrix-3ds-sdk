@@ -8,11 +8,13 @@ namespace Matrix {
 
 class MemoryStore : public Store {
 private:
-	std::string syncToken;
+	std::string syncToken = "";
+	std::string filterId = "";
 public:
-	MemoryStore();
 	void setSyncToken(std::string token);
 	std::string getSyncToken();
+	void setFilterId(std::string fid);
+	std::string getFilterId();
 };
 
 }; // namespace Matrix

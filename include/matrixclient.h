@@ -12,6 +12,8 @@ class Store {
 public:
 	virtual void setSyncToken(std::string token) = 0;
 	virtual std::string getSyncToken() = 0;
+	virtual void setFilterId(std::string filterId) = 0;
+	virtual std::string getFilterId() = 0;
 };
 
 struct RoomInfo {
@@ -44,8 +46,9 @@ public:
 	RequestError lastRequestError;
 	void (* sync_event_callback)(std::string roomId, json_t* event) = 0; 
 	void processSync(json_t* sync);
-	json_t* doSync(std::string token, u32 timeout);
-	void startSync();
+	void registerFilter();
+	json_t* doSync(std::string token, std::string filter, u32 timeout);
+	void syncLoop();
 	json_t* doRequest(const char* method, std::string path, json_t* body = NULL, u32 timeout = 5);
 	json_t* doRequestCurl(const char* method, std::string url, json_t* body, u32 timeout);
 	json_t* doRequestHttpc(const char* method, std::string url, json_t* body, u32 timeout);
@@ -53,6 +56,7 @@ public:
 	Client(std::string homeserverUrl, std::string matrixToken = "", Store* clientStore = NULL);
 	std::string getToken();
 	bool login(std::string username, std::string password);
+	void logout();
 	std::string getUserId();
 	std::string resolveRoom(std::string alias);
 	std::vector<std::string> getJoinedRooms();
