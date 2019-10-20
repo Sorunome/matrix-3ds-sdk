@@ -82,7 +82,12 @@ bool Client::login(std::string username, std::string password) {
 		json_decref(ret);
 		return false;
 	}
-	token = json_string_value(accessToken);
+	const char* tokenCStr = json_string_value(accessToken);
+	if (!tokenCStr) {
+		json_decref(ret);
+		return false;
+	}
+	token = tokenCStr;
 	json_decref(ret);
 	return true;
 }
@@ -107,7 +112,12 @@ std::string Client::getUserId() {
 		json_decref(ret);
 		return "";
 	}
-	std::string userIdStr = json_string_value(userId);
+	const char* userIdCStr = json_string_value(userId);
+	if (!userIdCStr) {
+		json_decref(ret);
+		return "";
+	}
+	std::string userIdStr = userIdCStr;
 	json_decref(ret);
 	userIdCache = std::string(userIdStr);
 	return userIdCache;
@@ -126,7 +136,12 @@ std::string Client::resolveRoom(std::string alias) {
 		json_decref(ret);
 		return "";
 	}
-	std::string roomIdStr = json_string_value(roomId);
+	const char* roomIdCStr = json_string_value(roomId);
+	if (!roomIdCStr) {
+		json_decref(ret);
+		return "";
+	}
+	std::string roomIdStr = roomIdCStr;
 	D printf_top("Room ID: %s\n", roomIdStr.c_str());
 	json_decref(ret);
 	return roomIdStr;
@@ -143,7 +158,10 @@ std::vector<std::string> Client::getJoinedRooms() {
 	size_t index;
 	json_t* value;
 	json_array_foreach(roomsArr, index, value) {
-		rooms.push_back(json_string_value(value));
+		const char* val = json_string_value(value);
+		if (val) {
+			rooms.push_back(val);
+		}
 	}
 	json_decref(ret);
 	return rooms;
@@ -170,11 +188,17 @@ UserInfo Client::getUserInfo(std::string userId, std::string roomId) {
 			json_t* val;
 			val = json_object_get(ret, "displayname");
 			if (val) {
-				displayname = json_string_value(val);
+				const char* valCStr = json_string_value(val);
+				if (valCStr) {
+					displayname = valCStr;
+				}
 			}
 			val = json_object_get(ret, "avatar_url");
 			if (val) {
-				avatarUrl = json_string_value(val);
+				const char* valCStr = json_string_value(val);
+				if (valCStr) {
+					avatarUrl = valCStr;
+				}
 			}
 			json_decref(ret);
 		}
@@ -187,11 +211,17 @@ UserInfo Client::getUserInfo(std::string userId, std::string roomId) {
 			json_t* val;
 			val = json_object_get(ret, "displayname");
 			if (val) {
-				displayname = json_string_value(val);
+				const char* valCStr = json_string_value(val);
+				if (valCStr) {
+					displayname = valCStr;
+				}
 			}
 			val = json_object_get(ret, "avatar_url");
 			if (val) {
-				avatarUrl = json_string_value(val);
+				const char* valCStr = json_string_value(val);
+				if (valCStr) {
+					avatarUrl = valCStr;
+				}
 			}
 			json_decref(ret);
 		}
@@ -213,7 +243,12 @@ std::string Client::getRoomName(std::string roomId) {
 		json_decref(ret);
 		return "";
 	}
-	std::string nameStr = json_string_value(name);
+	const char* nameCStr = json_string_value(name);
+	if (!nameCStr) {
+		json_decref(ret);
+		return "";
+	}
+	std::string nameStr = nameCStr;
 	json_decref(ret);
 	return nameStr;
 }
@@ -228,7 +263,12 @@ std::string Client::getRoomTopic(std::string roomId) {
 		json_decref(ret);
 		return "";
 	}
-	std::string topicStr = json_string_value(topic);
+	const char* topicCStr = json_string_value(topic);
+	if (!topicCStr) {
+		json_decref(ret);
+		return "";
+	}
+	std::string topicStr = topicCStr;
 	json_decref(ret);
 	return topicStr;
 }
@@ -243,7 +283,12 @@ std::string Client::getRoomAvatar(std::string roomId) {
 		json_decref(ret);
 		return "";
 	}
-	std::string urlStr = json_string_value(url);
+	const char* urlCStr = json_string_value(url);
+	if (!urlCStr) {
+		json_decref(ret);
+		return "";
+	}
+	std::string urlStr = urlCStr;
 	json_decref(ret);
 	return urlStr;
 }
@@ -292,7 +337,12 @@ std::string Client::sendEvent(std::string roomId, std::string eventType, json_t*
 		json_decref(ret);
 		return "";
 	}
-	std::string eventIdStr = json_string_value(eventId);
+	const char* eventIdCStr = json_string_value(eventId);
+	if (!eventIdCStr) {
+		json_decref(ret);
+		return "";
+	}
+	std::string eventIdStr = eventIdCStr;
 	json_decref(ret);
 	return eventIdStr;
 }
@@ -315,7 +365,12 @@ std::string Client::sendStateEvent(std::string roomId, std::string type, std::st
 		json_decref(ret);
 		return "";
 	}
-	std::string eventIdStr = json_string_value(eventId);
+	const char* eventIdCStr = json_string_value(eventId);
+	if (!eventIdCStr) {
+		json_decref(ret);
+		return "";
+	}
+	std::string eventIdStr = eventIdCStr;
 	json_decref(ret);
 	return eventIdStr;
 }
@@ -338,7 +393,12 @@ std::string Client::redactEvent(std::string roomId, std::string eventId, std::st
 		json_decref(ret);
 		return "";
 	}
-	const char* eventIdStr = json_string_value(retEventId);
+	const char* eventIdCStr = json_string_value(retEventId);
+	if (!eventIdCStr) {
+		json_decref(ret);
+		return "";
+	}
+	std::string eventIdStr = eventIdCStr;
 	json_decref(ret);
 	return eventIdStr;
 }
@@ -511,20 +571,29 @@ void Client::processSync(json_t* sync) {
 						if (strcmp(typeStr, "m.room.name") == 0) {
 							json_t* name = json_object_get(content, "name");
 							if (name) {
-								info.name = json_string_value(name);
-								addedInfo = true;
+								const char* nameCStr = json_string_value(name);
+								if (nameCStr) {
+									info.name = nameCStr;
+									addedInfo = true;
+								}
 							}
 						} else if (strcmp(typeStr, "m.room.topic") == 0) {
 							json_t* topic = json_object_get(event, "topic");
 							if (topic) {
-								info.topic = json_string_value(topic);
-								addedInfo = true;
+								const char* topicCStr = json_string_value(topic);
+								if (topicCStr) {
+									info.topic = topicCStr;
+									addedInfo = true;
+								}
 							}
 						} else if (strcmp(typeStr, "m.room.avatar") == 0) {
 							json_t* url = json_object_get(event, "url");
 							if (url) {
-								info.avatarUrl = json_string_value(url);
-								addedInfo = true;
+								const char* urlCStr = json_string_value(url);
+								if (urlCStr) {
+									info.avatarUrl = urlCStr;
+									addedInfo = true;
+								}
 							}
 						}
 					}
@@ -611,7 +680,12 @@ void Client::registerFilter() {
 		json_decref(ret);
 		return;
 	}
-	std::string filterIdStr = json_string_value(filterId);
+	const char* filterIdCStr = json_string_value(filterId);
+	if (!filterIdCStr) {
+		json_decref(ret);
+		return;
+	}
+	std::string filterIdStr = filterIdCStr;
 	json_decref(ret);
 	store->setFilterId(filterIdStr);
 }
@@ -634,7 +708,12 @@ void Client::syncLoop() {
 			// set the token for the next batch
 			json_t* token = json_object_get(ret, "next_batch");
 			if (token) {
-				store->setSyncToken(json_string_value(token));
+				const char* tokenCStr = json_string_value(token);
+				if (tokenCStr) {
+					store->setSyncToken(tokenCStr);
+				} else {
+					store->setSyncToken("");
+				}
 			} else {
 				store->setSyncToken("");
 			}
