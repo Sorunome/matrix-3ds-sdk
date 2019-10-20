@@ -8,6 +8,8 @@
 
 namespace Matrix {
 
+typedef void (*eventCallback)(std::string roomId, json_t* event);
+
 class Store {
 public:
 	virtual void setSyncToken(std::string token) = 0;
@@ -44,7 +46,11 @@ public:
 	bool isSyncing = false;
 	Thread syncThread;
 	RequestError lastRequestError;
-	void (* sync_event_callback)(std::string roomId, json_t* event) = 0; 
+	struct {
+		eventCallback event = NULL;
+		eventCallback leaveRoom = NULL;
+		eventCallback inviteRoom = NULL;
+	} callbacks;
 	void processSync(json_t* sync);
 	void registerFilter();
 	json_t* doSync(std::string token, std::string filter, u32 timeout);
@@ -75,7 +81,9 @@ public:
 	std::string redactEvent(std::string roomId, std::string eventId, std::string reason = "");
 	void startSyncLoop();
 	void stopSyncLoop();
-	void setSyncEventCallback(void (*cb)(std::string roomId, json_t* event));
+	void setEventCallback(eventCallback cb);
+	void setLeaveRoomCallback(eventCallback cb);
+	void setInviteRoomCallback(eventCallback cb);
 };
 
 }; // namespace Matrix

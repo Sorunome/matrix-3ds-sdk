@@ -357,8 +357,16 @@ void Client::stopSyncLoop() {
 	isSyncing = false;
 }
 
-void Client::setSyncEventCallback(void (*cb)(std::string roomId, json_t* event)) {
-	sync_event_callback = cb;
+void Client::setEventCallback(eventCallback cb) {
+	callbacks.event = cb;
+}
+
+void Client::setLeaveRoomCallback(eventCallback cb) {
+	callbacks.leaveRoom = cb;
+}
+
+void Client::setInviteRoomCallback(eventCallback cb) {
+	callbacks.inviteRoom = cb;
 }
 
 void Client::processSync(json_t* sync) {
@@ -375,39 +383,113 @@ void Client::processSync(json_t* sync) {
 	size_t index;
 	json_t* event;
 	
-	if (leftRooms) {
+	if (leftRooms && callbacks.leaveRoom) {
 		json_object_foreach(leftRooms, roomId, room) {
 			// rooms that we left
-			// emit leave event with roomId
-		}
-	}
-	
-	if (invitedRooms) {
-		json_object_foreach(invitedRooms, roomId, room) {
-			// rooms that we were invited to
-		}
-	}
-	
-	if (joinedRooms) {
-		json_object_foreach(joinedRooms, roomId, room) {
-			// rooms that we are joined
-//			D printf_top("%s:\n", roomId);
 			json_t* timeline = json_object_get(room, "timeline");
 			if (!timeline) {
-//				D printf_top("no timeline\n");
 				continue;
 			}
 			json_t* events = json_object_get(timeline, "events");
 			if (!events) {
-//				D printf_top("no events\n");
+				continue;
+			}
+			json_t* leaveEvent = NULL;
+			json_array_foreach(events, index, event) {
+				// check if the event type is m.room.member
+				json_t* val = json_object_get(event, "type");
+				if (!val) {
+					continue;
+				}
+				if (strcmp(json_string_value(val), "m.room.member") != 0) {
+					continue;
+				}
+				// check if it is actually us
+				val = json_object_get(event, "state_key");
+				if (!val) {
+					continue;
+				}
+				if (strcmp(json_string_value(val), getUserId().c_str()) != 0) {
+					continue;
+				}
+				// we do *not* check for event age as we don't have unsigned stuffs in our timeline due to our filter
+				// so we just assume that the events arrive in the correct order (probably true)
+				leaveEvent = event;
+			}
+			if (!leaveEvent) {
+				D printf_top("Left room %s without an event\n", roomId);
+				continue;
+			}
+			callbacks.leaveRoom(roomId, leaveEvent);
+		}
+	}
+	
+	if (invitedRooms && callbacks.inviteRoom) {
+		json_object_foreach(invitedRooms, roomId, room) {
+			// rooms that we were invited to
+			json_t* invite_state = json_object_get(room, "invite_state");
+			if (!invite_state) {
+				continue;
+			}
+			json_t* events = json_object_get(invite_state, "events");
+			if (!events) {
+				continue;
+			}
+			json_t* inviteEvent = NULL;
+			json_array_foreach(events, index, event) {
+				// check if the event type is m.room.member
+				json_t* val = json_object_get(event, "type");
+				if (!val) {
+					continue;
+				}
+				if (strcmp(json_string_value(val), "m.room.member") != 0) {
+					continue;
+				}
+				// check if it is actually us
+				val = json_object_get(event, "state_key");
+				if (!val) {
+					continue;
+				}
+				if (strcmp(json_string_value(val), getUserId().c_str()) != 0) {
+					continue;
+				}
+				// check for if it was an invite event
+				json_t* content = json_object_get(event, "content");
+				if (!content) {
+					continue;
+				}
+				val = json_object_get(content, "membership");
+				if (!val) {
+					continue;
+				}
+				if (strcmp(json_string_value(val), "invite") != 0) {
+					continue;
+				}
+				// we do *not* check for event age as we don't have unsigned stuffs in our timeline due to our filter
+				// so we just assume that the events arrive in the correct order (probably true)
+				inviteEvent = event;
+			}
+			if (!inviteEvent) {
+				D printf_top("Invite to room %s without an event\n", roomId);
+				continue;
+			}
+			callbacks.inviteRoom(roomId, inviteEvent);
+		}
+	}
+	
+	if (joinedRooms && callbacks.event) {
+		json_object_foreach(joinedRooms, roomId, room) {
+			// rooms that we are joined
+			json_t* timeline = json_object_get(room, "timeline");
+			if (!timeline) {
+				continue;
+			}
+			json_t* events = json_object_get(timeline, "events");
+			if (!events) {
 				continue;
 			}
 			json_array_foreach(events, index, event) {
-				json_t* eventType = json_object_get(event, "type");
-//				D printf_top("%s\n", json_string_value(eventType));
-				if (sync_event_callback) {
-					sync_event_callback(roomId, event);
-				}
+				callbacks.event(roomId, event);
 			}
 		}
 	}
