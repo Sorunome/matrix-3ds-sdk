@@ -8,8 +8,6 @@
 
 namespace Matrix {
 
-typedef void (*eventCallback)(std::string roomId, json_t* event);
-
 class Store {
 public:
 	virtual void setSyncToken(std::string token) = 0;
@@ -34,6 +32,9 @@ enum struct RequestError : u8 {
 	timeout,
 };
 
+typedef void (*eventCallback)(std::string roomId, json_t* event);
+typedef void (*roomInfoCallback)(std::string roomId, RoomInfo info);
+
 class Client {
 private:
 public:
@@ -50,6 +51,7 @@ public:
 		eventCallback event = NULL;
 		eventCallback leaveRoom = NULL;
 		eventCallback inviteRoom = NULL;
+		roomInfoCallback roomInfo = NULL;
 	} callbacks;
 	void processSync(json_t* sync);
 	void registerFilter();
@@ -84,6 +86,7 @@ public:
 	void setEventCallback(eventCallback cb);
 	void setLeaveRoomCallback(eventCallback cb);
 	void setInviteRoomCallback(eventCallback cb);
+	void setRoomInfoCallback(roomInfoCallback cb);
 };
 
 }; // namespace Matrix

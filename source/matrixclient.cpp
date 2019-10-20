@@ -1,4 +1,4 @@
-#include "../include/matrixclient.h"
+#include <matrixclient.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <3ds.h>
@@ -17,7 +17,7 @@
 #define SOC_BUFFERSIZE  0x100000
 #define SYNC_TIMEOUT 10000
 
-#define DEBUG 1
+#define DEBUG 0
 
 #if DEBUG
 #define D 
@@ -25,9 +25,15 @@
 #define D for(;0;)
 #endif
 
+#if DEBUG
 PrintConsole* topScreenConsole = NULL;
+#endif
 
+#if DEBUG
 #define printf_top(f_, ...) do {consoleSelect(topScreenConsole);printf((f_), ##__VA_ARGS__);} while(0)
+#else
+#define printf_top(f_, ...) do {} while(0)
+#endif
 
 namespace Matrix {
 
@@ -43,10 +49,12 @@ Client::Client(std::string homeserverUrl, std::string matrixToken, Store* client
 		clientStore = new MemoryStore;
 	}
 	store = clientStore;
+#if DEBUG
 	if (!topScreenConsole) {
 		topScreenConsole = new PrintConsole;
 		consoleInit(GFX_TOP, topScreenConsole);
 	}
+#endif
 }
 
 std::string Client::getToken() {
@@ -369,6 +377,10 @@ void Client::setInviteRoomCallback(eventCallback cb) {
 	callbacks.inviteRoom = cb;
 }
 
+void Client::setRoomInfoCallback(roomInfoCallback cb) {
+	callbacks.roomInfo = cb;
+}
+
 void Client::processSync(json_t* sync) {
 	json_t* rooms = json_object_get(sync, "rooms");
 	if (!rooms) {
@@ -477,19 +489,58 @@ void Client::processSync(json_t* sync) {
 		}
 	}
 	
-	if (joinedRooms && callbacks.event) {
+	if (joinedRooms) {
 		json_object_foreach(joinedRooms, roomId, room) {
 			// rooms that we are joined
+			json_t* state = json_object_get(room, "state");
+			if (callbacks.roomInfo && state) {
+				json_t* events = json_object_get(state, "events");
+				if (events) {
+					RoomInfo info;
+					bool addedInfo = false;
+					json_array_foreach(events, index, event) {
+						json_t* type = json_object_get(event, "type");
+						if (!type) {
+							continue;
+						}
+						json_t* content = json_object_get(event, "content");
+						if (!content) {
+							continue;
+						}
+						const char* typeStr = json_string_value(type);
+						if (strcmp(typeStr, "m.room.name") == 0) {
+							json_t* name = json_object_get(content, "name");
+							if (name) {
+								info.name = json_string_value(name);
+								addedInfo = true;
+							}
+						} else if (strcmp(typeStr, "m.room.topic") == 0) {
+							json_t* topic = json_object_get(event, "topic");
+							if (topic) {
+								info.topic = json_string_value(topic);
+								addedInfo = true;
+							}
+						} else if (strcmp(typeStr, "m.room.avatar") == 0) {
+							json_t* url = json_object_get(event, "url");
+							if (url) {
+								info.avatarUrl = json_string_value(url);
+								addedInfo = true;
+							}
+						}
+					}
+					if (addedInfo) {
+						callbacks.roomInfo(roomId, info);
+					}
+				}
+			}
 			json_t* timeline = json_object_get(room, "timeline");
-			if (!timeline) {
-				continue;
-			}
-			json_t* events = json_object_get(timeline, "events");
-			if (!events) {
-				continue;
-			}
-			json_array_foreach(events, index, event) {
-				callbacks.event(roomId, event);
+			if (callbacks.event && timeline) {
+				json_t* events = json_object_get(timeline, "events");
+				if (events) {
+					json_array_foreach(events, index, event) {
+						callbacks.event(roomId, event);
+					}
+				}
 			}
 		}
 	}
