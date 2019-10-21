@@ -26,11 +26,11 @@
 #endif
 
 #if DEBUG
-PrintConsole* topScreenConsole = NULL;
+PrintConsole* topScreenDebugConsole = NULL;
 #endif
 
 #if DEBUG
-#define printf_top(f_, ...) do {consoleSelect(topScreenConsole);printf((f_), ##__VA_ARGS__);} while(0)
+#define printf_top(f_, ...) do {consoleSelect(topScreenDebugConsole);printf((f_), ##__VA_ARGS__);} while(0)
 #else
 #define printf_top(f_, ...) do {} while(0)
 #endif
@@ -50,9 +50,9 @@ Client::Client(std::string homeserverUrl, std::string matrixToken, Store* client
 	}
 	store = clientStore;
 #if DEBUG
-	if (!topScreenConsole) {
-		topScreenConsole = new PrintConsole;
-		consoleInit(GFX_TOP, topScreenConsole);
+	if (!topScreenDebugConsole) {
+		topScreenDebugConsole = new PrintConsole;
+		consoleInit(GFX_TOP, topScreenDebugConsole);
 	}
 #endif
 }
@@ -492,13 +492,13 @@ void Client::processSync(json_t* sync) {
 								addedInfo = true;
 							}
 						} else if (strcmp(typeCStr, "m.room.topic") == 0) {
-							const char* topicCStr = json_object_get_string_value(event, "topic");
+							const char* topicCStr = json_object_get_string_value(content, "topic");
 							if (topicCStr) {
 								info.topic = topicCStr;
 								addedInfo = true;
 							}
 						} else if (strcmp(typeCStr, "m.room.avatar") == 0) {
-							const char* urlCStr = json_object_get_string_value(event, "url");
+							const char* urlCStr = json_object_get_string_value(content, "url");
 							if (urlCStr) {
 								info.avatarUrl = urlCStr;
 								addedInfo = true;
