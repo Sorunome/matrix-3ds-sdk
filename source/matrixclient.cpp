@@ -118,7 +118,7 @@ std::string Client::resolveRoom(std::string alias) {
 		return "";
 	}
 	std::string roomIdStr = roomIdCStr;
-	D printf_top("Room ID: %s\n", roomIdStr.c_str());
+	printf_top("Room ID: %s\n", roomIdStr.c_str());
 	json_decref(ret);
 	return roomIdStr;
 }
@@ -406,7 +406,7 @@ void Client::processSync(json_t* sync) {
 				leaveEvent = event;
 			}
 			if (!leaveEvent) {
-				D printf_top("Left room %s without an event\n", roomId);
+				printf_top("Left room %s without an event\n", roomId);
 				continue;
 			}
 			callbacks.leaveRoom(roomId, leaveEvent);
@@ -460,7 +460,7 @@ void Client::processSync(json_t* sync) {
 				inviteEvent = event;
 			}
 			if (!inviteEvent) {
-				D printf_top("Invite to room %s without an event\n", roomId);
+				printf_top("Invite to room %s without an event\n", roomId);
 				continue;
 			}
 			callbacks.inviteRoom(roomId, inviteEvent);
@@ -571,9 +571,9 @@ void Client::registerFilter() {
 	json_error_t error;
 	json_t* filter = json_loads(json, 0, &error);
 	if (!filter) {
-		D printf_top("PANIC!!!!! INVALID FILTER JSON!!!!\n");
-		D printf_top("%s\n", error.text);
-		D printf_top("At %d:%d (%d)\n", error.line, error.column, error.position);
+		printf_top("PANIC!!!!! INVALID FILTER JSON!!!!\n");
+		printf_top("%s\n", error.text);
+		printf_top("At %d:%d (%d)\n", error.line, error.column, error.position);
 		return;
 	}
 	std::string userId = getUserId();
@@ -616,7 +616,7 @@ void Client::syncLoop() {
 		} else {
 			if (lastRequestError == RequestError::timeout) {
 				timeout += 10*60;
-				D printf_top("Timeout reached, increasing it to %lu\n", timeout);
+				printf_top("Timeout reached, increasing it to %lu\n", timeout);
 			}
 		}
 		svcSleepThread((u64)1000000ULL * (u64)200);
@@ -624,7 +624,7 @@ void Client::syncLoop() {
 }
 
 json_t* Client::doSync(std::string token, std::string filter, u32 timeout) {
-//	D printf_top("Doing sync with token %s\n", token.c_str());
+//	printf_top("Doing sync with token %s\n", token.c_str());
 	
 	std::string query = "?full_state=false&timeout=" + std::to_string(SYNC_TIMEOUT) + "&filter=" + urlencode(filter);
 	if (token != "") {
@@ -661,7 +661,7 @@ json_t* Client::doRequest(const char* method, std::string path, json_t* body, u3
 }
 
 json_t* Client::doRequestCurl(const char* method, std::string url, json_t* body, u32 timeout) {
-	D printf_top("Opening Request %d with CURL\n%s\n", requestId, url.c_str());
+	printf_top("Opening Request %d with CURL\n%s\n", requestId, url.c_str());
 
 	if (!SOC_buffer) {
 		SOC_buffer = (u32*)memalign(0x1000, POST_BUFFERSIZE);
@@ -676,7 +676,7 @@ json_t* Client::doRequestCurl(const char* method, std::string url, json_t* body,
 	CURL* curl = curl_easy_init();
 	CURLcode res;
 	if (!curl) {
-		D printf_top("curl init failed\n");
+		printf_top("curl init failed\n");
 		return NULL;
 	}
 	std::string readBuffer;
@@ -710,26 +710,26 @@ json_t* Client::doRequestCurl(const char* method, std::string url, json_t* body,
 	curl_easy_cleanup(curl);
 	if (bodyStr) free(bodyStr);
 	if (res != CURLE_OK) {
-		D printf_top("curl res not ok %d\n", res);
+		printf_top("curl res not ok %d\n", res);
 		if (res == CURLE_OPERATION_TIMEDOUT) {
 			lastRequestError = RequestError::timeout;
 		}
 		return NULL;
 	}
 
-//	D printf_top("%s\n", readBuffer.c_str());
-	D printf_top("Body size: %d\n", readBuffer.length());
+//	printf_top("%s\n", readBuffer.c_str());
+	printf_top("Body size: %d\n", readBuffer.length());
 	json_error_t error;
 	json_t* content = json_loads(readBuffer.c_str(), 0, &error);
 	if (!content) {
-		D printf_top("Failed to parse json\n");
+		printf_top("Failed to parse json\n");
 		return NULL;
 	}
 	return content;
 }
 
 json_t* Client::doRequestHttpc(const char* method, std::string url, json_t* body, u32 timeout) {
-	D printf_top("Opening Request %d with HTTPC\n%s\n", requestId, url.c_str());
+	printf_top("Opening Request %d with HTTPC\n%s\n", requestId, url.c_str());
 
 	if (!HTTPC_inited) {
 		if (httpcInit(POST_BUFFERSIZE) != 0) {
@@ -771,7 +771,7 @@ json_t* Client::doRequestHttpc(const char* method, std::string url, json_t* body
 		ret = httpcBeginRequest(&context);
 		if (bodyStr) free(bodyStr);
 		if (ret) {
-			D printf_top("Failed to perform request %ld\n", ret);
+			printf_top("Failed to perform request %ld\n", ret);
 			httpcCloseContext(&context);
 			return NULL;
 		}
@@ -815,7 +815,7 @@ json_t* Client::doRequestHttpc(const char* method, std::string url, json_t* body
 	} while (ret == (s32)HTTPC_RESULTCODE_DOWNLOADPENDING);
 
 	if (ret) {
-		D printf_top("httpc res not ok %lu\n", ret);
+		printf_top("httpc res not ok %lu\n", ret);
 		// let's just assume it was a timeout...
 		// TODO: better detection
 		lastRequestError = RequestError::timeout;
@@ -836,14 +836,14 @@ json_t* Client::doRequestHttpc(const char* method, std::string url, json_t* body
 
 	httpcCloseContext(&context);
 
-//	D printf_top("%s\n", buf);
-	D printf_top("Body size: %lu\n", size);
+//	printf_top("%s\n", buf);
+	printf_top("Body size: %lu\n", size);
 
 	json_error_t error;
 	json_t* content = json_loads((char*)buf, 0, &error);
 	free(buf);
 	if (!content) {
-		D printf_top("Failed to parse json\n");
+		printf_top("Failed to parse json\n");
 		return NULL;
 	}
 	return content;
