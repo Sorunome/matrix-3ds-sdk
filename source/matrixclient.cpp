@@ -74,17 +74,9 @@ bool Client::login(std::string username, std::string password) {
 	json_t* ret = doRequest("POST", "/_matrix/client/r0/login", request);
 	json_decref(request);
 
-	if (!ret) {
-		return false;
-	}
-	json_t* accessToken = json_object_get(ret, "access_token");
-	if (!accessToken) {
-		json_decref(ret);
-		return false;
-	}
-	const char* tokenCStr = json_string_value(accessToken);
+	const char* tokenCStr = json_object_get_string_value(ret, "access_token");
 	if (!tokenCStr) {
-		json_decref(ret);
+		if (ret) json_decref(ret);
 		return false;
 	}
 	token = tokenCStr;
@@ -104,17 +96,9 @@ std::string Client::getUserId() {
 		return userIdCache;
 	}
 	json_t* ret = doRequest("GET", "/_matrix/client/r0/account/whoami");
-	if (!ret) {
-		return "";
-	}
-	json_t* userId = json_object_get(ret, "user_id");
-	if (!userId) {
-		json_decref(ret);
-		return "";
-	}
-	const char* userIdCStr = json_string_value(userId);
+	const char* userIdCStr = json_object_get_string_value(ret, "user_id");
 	if (!userIdCStr) {
-		json_decref(ret);
+		if (ret) json_decref(ret);
 		return "";
 	}
 	std::string userIdStr = userIdCStr;
@@ -128,17 +112,9 @@ std::string Client::resolveRoom(std::string alias) {
 		return alias; // this is already a room ID, nothing to do
 	}
 	json_t* ret = doRequest("GET", "/_matrix/client/r0/directory/room/" + urlencode(alias));
-	if (!ret) {
-		return "";
-	}
-	json_t* roomId = json_object_get(ret, "room_id");
-	if (!roomId) {
-		json_decref(ret);
-		return "";
-	}
-	const char* roomIdCStr = json_string_value(roomId);
+	const char* roomIdCStr = json_object_get_string_value(ret, "room_id");
 	if (!roomIdCStr) {
-		json_decref(ret);
+		if (ret) json_decref(ret);
 		return "";
 	}
 	std::string roomIdStr = roomIdCStr;
@@ -185,20 +161,14 @@ UserInfo Client::getUserInfo(std::string userId, std::string roomId) {
 		// first try fetching fro the room
 		json_t* ret = getStateEvent(roomId, "m.room.member", userId);
 		if (ret) {
-			json_t* val;
-			val = json_object_get(ret, "displayname");
-			if (val) {
-				const char* valCStr = json_string_value(val);
-				if (valCStr) {
-					displayname = valCStr;
-				}
+			char* valCStr;
+			valCStr = json_object_get_string_value(ret, "displayname");
+			if (valCStr) {
+				displayname = valCStr;
 			}
-			val = json_object_get(ret, "avatar_url");
-			if (val) {
-				const char* valCStr = json_string_value(val);
-				if (valCStr) {
-					avatarUrl = valCStr;
-				}
+			valCStr = json_object_get_string_value(ret, "avatar_url");
+			if (valCStr) {
+				avatarUrl = valCStr;
 			}
 			json_decref(ret);
 		}
@@ -208,20 +178,14 @@ UserInfo Client::getUserInfo(std::string userId, std::string roomId) {
 		std::string path = "/_matrix/client/r0/profile/" + urlencode(userId);
 		json_t* ret = doRequest("GET", path);
 		if (ret) {
-			json_t* val;
-			val = json_object_get(ret, "displayname");
-			if (val) {
-				const char* valCStr = json_string_value(val);
-				if (valCStr) {
-					displayname = valCStr;
-				}
+			char* valCStr;
+			valCStr = json_object_get_string_value(ret, "displayname");
+			if (valCStr) {
+				displayname = valCStr;
 			}
-			val = json_object_get(ret, "avatar_url");
-			if (val) {
-				const char* valCStr = json_string_value(val);
-				if (valCStr) {
-					avatarUrl = valCStr;
-				}
+			valCStr = json_object_get_string_value(ret, "avatar_url");
+			if (valCStr) {
+				avatarUrl = valCStr;
 			}
 			json_decref(ret);
 		}
@@ -235,17 +199,9 @@ UserInfo Client::getUserInfo(std::string userId, std::string roomId) {
 
 std::string Client::getRoomName(std::string roomId) {
 	json_t* ret = getStateEvent(roomId, "m.room.name", "");
-	if (!ret) {
-		return "";
-	}
-	json_t* name = json_object_get(ret, "name");
-	if (!name) {
-		json_decref(ret);
-		return "";
-	}
-	const char* nameCStr = json_string_value(name);
+	const char* nameCStr = json_object_get_string_value(ret, "name");
 	if (!nameCStr) {
-		json_decref(ret);
+		if (ret) json_decref(ret);
 		return "";
 	}
 	std::string nameStr = nameCStr;
@@ -255,17 +211,9 @@ std::string Client::getRoomName(std::string roomId) {
 
 std::string Client::getRoomTopic(std::string roomId) {
 	json_t* ret = getStateEvent(roomId, "m.room.topic", "");
-	if (!ret) {
-		return "";
-	}
-	json_t* topic = json_object_get(ret, "topic");
-	if (!topic) {
-		json_decref(ret);
-		return "";
-	}
-	const char* topicCStr = json_string_value(topic);
+	const char* topicCStr = json_object_get_string_value(ret, "topic");
 	if (!topicCStr) {
-		json_decref(ret);
+		if (ret) json_decref(ret);
 		return "";
 	}
 	std::string topicStr = topicCStr;
@@ -275,17 +223,9 @@ std::string Client::getRoomTopic(std::string roomId) {
 
 std::string Client::getRoomAvatar(std::string roomId) {
 	json_t* ret = getStateEvent(roomId, "m.room.avatar", "");
-	if (!ret) {
-		return "";
-	}
-	json_t* url = json_object_get(ret, "url");
-	if (!url) {
-		json_decref(ret);
-		return "";
-	}
-	const char* urlCStr = json_string_value(url);
+	const char* urlCStr = json_object_get_string_value(ret, "url");
 	if (!urlCStr) {
-		json_decref(ret);
+		if (ret) json_decref(ret);
 		return "";
 	}
 	std::string urlStr = urlCStr;
@@ -329,17 +269,9 @@ std::string Client::sendEvent(std::string roomId, std::string eventType, json_t*
 	std::string txid = std::to_string(time(NULL)) + "_REQ_" + std::to_string(requestId);
 	std::string path = "/_matrix/client/r0/rooms/" + urlencode(roomId) + "/send/" + urlencode(eventType) + "/" + urlencode(txid);
 	json_t* ret = doRequest("PUT", path, content);
-	if (!ret) {
-		return "";
-	}
-	json_t* eventId = json_object_get(ret, "event_id");
-	if (!eventId) {
-		json_decref(ret);
-		return "";
-	}
-	const char* eventIdCStr = json_string_value(eventId);
+	const char* eventIdCStr = json_object_get_string_value(ret, "event_id");
 	if (!eventIdCStr) {
-		json_decref(ret);
+		if (ret) json_decref(ret);
 		return "";
 	}
 	std::string eventIdStr = eventIdCStr;
@@ -357,17 +289,9 @@ std::string Client::sendStateEvent(std::string roomId, std::string type, std::st
 	roomId = resolveRoom(roomId);
 	std::string path = "/_matrix/client/r0/rooms/" + urlencode(roomId) + "/state/" + urlencode(type) + "/" + urlencode(stateKey);
 	json_t* ret = doRequest("PUT", path, content);
-	if (!ret) {
-		return "";
-	}
-	json_t* eventId = json_object_get(ret, "event_id");
-	if (!eventId) {
-		json_decref(ret);
-		return "";
-	}
-	const char* eventIdCStr = json_string_value(eventId);
+	const char* eventIdCStr = json_object_get_string_value(ret, "event_id");
 	if (!eventIdCStr) {
-		json_decref(ret);
+		if (ret) json_decref(ret);
 		return "";
 	}
 	std::string eventIdStr = eventIdCStr;
@@ -385,17 +309,9 @@ std::string Client::redactEvent(std::string roomId, std::string eventId, std::st
 	std::string path = "/_matrix/client/r0/rooms/" + urlencode(roomId) + "/redact/" + urlencode(eventId) + "/" + txid;
 	json_t* ret = doRequest("PUT", path, content);
 	json_decref(content);
-	if (!ret) {
-		return "";
-	}
-	json_t* retEventId = json_object_get(ret, "event_id");
-	if (!retEventId) {
-		json_decref(ret);
-		return "";
-	}
-	const char* eventIdCStr = json_string_value(retEventId);
+	const char* eventIdCStr = json_object_get_string_value(ret, "event_id");
 	if (!eventIdCStr) {
-		json_decref(ret);
+		if (ret) json_decref(ret);
 		return "";
 	}
 	std::string eventIdStr = eventIdCStr;
@@ -469,19 +385,20 @@ void Client::processSync(json_t* sync) {
 			json_t* leaveEvent = NULL;
 			json_array_foreach(events, index, event) {
 				// check if the event type is m.room.member
-				json_t* val = json_object_get(event, "type");
+				char* val;
+				val = json_object_get_string_value(event, "type");
 				if (!val) {
 					continue;
 				}
-				if (strcmp(json_string_value(val), "m.room.member") != 0) {
+				if (strcmp(val, "m.room.member") != 0) {
 					continue;
 				}
 				// check if it is actually us
-				val = json_object_get(event, "state_key");
+				val = json_object_get_string_value(event, "state_key");
 				if (!val) {
 					continue;
 				}
-				if (strcmp(json_string_value(val), getUserId().c_str()) != 0) {
+				if (strcmp(val, getUserId().c_str()) != 0) {
 					continue;
 				}
 				// we do *not* check for event age as we don't have unsigned stuffs in our timeline due to our filter
@@ -510,19 +427,20 @@ void Client::processSync(json_t* sync) {
 			json_t* inviteEvent = NULL;
 			json_array_foreach(events, index, event) {
 				// check if the event type is m.room.member
-				json_t* val = json_object_get(event, "type");
+				char* val;
+				val = json_object_get_string_value(event, "type");
 				if (!val) {
 					continue;
 				}
-				if (strcmp(json_string_value(val), "m.room.member") != 0) {
+				if (strcmp(val, "m.room.member") != 0) {
 					continue;
 				}
 				// check if it is actually us
-				val = json_object_get(event, "state_key");
+				val = json_object_get_string_value(event, "state_key");
 				if (!val) {
 					continue;
 				}
-				if (strcmp(json_string_value(val), getUserId().c_str()) != 0) {
+				if (strcmp(val, getUserId().c_str()) != 0) {
 					continue;
 				}
 				// check for if it was an invite event
@@ -530,11 +448,11 @@ void Client::processSync(json_t* sync) {
 				if (!content) {
 					continue;
 				}
-				val = json_object_get(content, "membership");
+				val = json_object_get_string_value(content, "membership");
 				if (!val) {
 					continue;
 				}
-				if (strcmp(json_string_value(val), "invite") != 0) {
+				if (strcmp(val, "invite") != 0) {
 					continue;
 				}
 				// we do *not* check for event age as we don't have unsigned stuffs in our timeline due to our filter
@@ -559,41 +477,31 @@ void Client::processSync(json_t* sync) {
 					RoomInfo info;
 					bool addedInfo = false;
 					json_array_foreach(events, index, event) {
-						json_t* type = json_object_get(event, "type");
-						if (!type) {
+						const char* typeCStr = json_object_get_string_value(event, "type");
+						if (!typeCStr) {
 							continue;
 						}
 						json_t* content = json_object_get(event, "content");
 						if (!content) {
 							continue;
 						}
-						const char* typeStr = json_string_value(type);
-						if (strcmp(typeStr, "m.room.name") == 0) {
-							json_t* name = json_object_get(content, "name");
-							if (name) {
-								const char* nameCStr = json_string_value(name);
-								if (nameCStr) {
-									info.name = nameCStr;
-									addedInfo = true;
-								}
+						if (strcmp(typeCStr, "m.room.name") == 0) {
+							const char* nameCStr = json_object_get_string_value(content, "name");
+							if (nameCStr) {
+								info.name = nameCStr;
+								addedInfo = true;
 							}
-						} else if (strcmp(typeStr, "m.room.topic") == 0) {
-							json_t* topic = json_object_get(event, "topic");
-							if (topic) {
-								const char* topicCStr = json_string_value(topic);
-								if (topicCStr) {
-									info.topic = topicCStr;
-									addedInfo = true;
-								}
+						} else if (strcmp(typeCStr, "m.room.topic") == 0) {
+							const char* topicCStr = json_object_get_string_value(event, "topic");
+							if (topicCStr) {
+								info.topic = topicCStr;
+								addedInfo = true;
 							}
-						} else if (strcmp(typeStr, "m.room.avatar") == 0) {
-							json_t* url = json_object_get(event, "url");
-							if (url) {
-								const char* urlCStr = json_string_value(url);
-								if (urlCStr) {
-									info.avatarUrl = urlCStr;
-									addedInfo = true;
-								}
+						} else if (strcmp(typeCStr, "m.room.avatar") == 0) {
+							const char* urlCStr = json_object_get_string_value(event, "url");
+							if (urlCStr) {
+								info.avatarUrl = urlCStr;
+								addedInfo = true;
 							}
 						}
 					}
@@ -671,18 +579,9 @@ void Client::registerFilter() {
 	std::string userId = getUserId();
 	json_t* ret = doRequest("POST", "/_matrix/client/r0/user/" + urlencode(userId) + "/filter", filter);
 	json_decref(filter);
-
-	if (!ret) {
-		return;
-	}
-	json_t* filterId = json_object_get(ret, "filter_id");
-	if (!filterId) {
-		json_decref(ret);
-		return;
-	}
-	const char* filterIdCStr = json_string_value(filterId);
+	const char* filterIdCStr = json_object_get_string_value(ret, "filter_id");
 	if (!filterIdCStr) {
-		json_decref(ret);
+		if (ret) json_decref(ret);
 		return;
 	}
 	std::string filterIdStr = filterIdCStr;
@@ -706,14 +605,9 @@ void Client::syncLoop() {
 		if (ret) {
 			timeout = 60;
 			// set the token for the next batch
-			json_t* token = json_object_get(ret, "next_batch");
-			if (token) {
-				const char* tokenCStr = json_string_value(token);
-				if (tokenCStr) {
-					store->setSyncToken(tokenCStr);
-				} else {
-					store->setSyncToken("");
-				}
+			const char* tokenCStr = json_object_get_string_value(ret, "next_batch");
+			if (tokenCStr) {
+				store->setSyncToken(tokenCStr);
 			} else {
 				store->setSyncToken("");
 			}

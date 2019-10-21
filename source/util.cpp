@@ -2,6 +2,7 @@
 #include <string>
 #include <sstream>
 #include <3ds.h>
+#include <jansson.h>
 
 // from http://www.zedwood.com/article/cpp-urlencode-function
 std::string urlencode(std::string s) {
@@ -52,4 +53,15 @@ Result httpcDownloadDataTimeout(httpcContext *context, u8* buffer, u32 size, u32
 	if(downloadedsize)*downloadedsize = pos;
 
 	return dlret;
+}
+
+char* json_object_get_string_value(json_t* obj, const char* key) {
+	if (!obj) {
+		return NULL;
+	}
+	json_t* keyObj = json_object_get(obj, key);
+	if (!keyObj) {
+		return NULL;
+	}
+	return (char*)json_string_value(keyObj);
 }
