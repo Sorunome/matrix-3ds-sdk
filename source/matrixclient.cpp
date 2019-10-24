@@ -154,7 +154,7 @@ RoomInfo Client::getRoomInfo(std::string roomId) {
 	return info;
 }
 
-UserInfo Client::getUserInfo(std::string userId, std::string roomId) {
+MemberInfo Client::getMemberInfo(std::string userId, std::string roomId) {
 	std::string displayname = "";
 	std::string avatarUrl = "";
 	if (roomId != "") {
@@ -190,7 +190,7 @@ UserInfo Client::getUserInfo(std::string userId, std::string roomId) {
 			json_decref(ret);
 		}
 	}
-	UserInfo info = {
+	MemberInfo info = {
 		displayname: displayname,
 		avatarUrl: avatarUrl,
 	};

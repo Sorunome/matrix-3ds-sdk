@@ -22,7 +22,7 @@ struct RoomInfo {
 	std::string avatarUrl;
 };
 
-struct UserInfo {
+struct MemberInfo {
 	std::string displayname;
 	std::string avatarUrl;
 };
@@ -69,7 +69,7 @@ public:
 	std::string resolveRoom(std::string alias);
 	std::vector<std::string> getJoinedRooms();
 	RoomInfo getRoomInfo(std::string roomId);
-	UserInfo getUserInfo(std::string userId, std::string roomId = "");
+	MemberInfo getMemberInfo(std::string userId, std::string roomId = "");
 	std::string getRoomName(std::string roomId);
 	std::string getRoomTopic(std::string roomId);
 	std::string getRoomAvatar(std::string roomId);

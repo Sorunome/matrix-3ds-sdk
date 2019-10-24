@@ -13,7 +13,7 @@ make install
 
 ## Usage
 
-This library depends on jansson and liburl, so be sure to add the following libraries to your projects makefile:
+This library depends on jansson and libcurl, so be sure to add the following libraries to your projects makefile:
 ```
 -lmatrix-3ds-sdk -ljansson `curl-config --libs`
 ```
