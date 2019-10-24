@@ -5,6 +5,7 @@
 #include <vector>
 #include <3ds.h>
 #include <jansson.h>
+#include <map>
 
 namespace Matrix {
 
@@ -25,6 +26,11 @@ struct RoomInfo {
 struct MemberInfo {
 	std::string displayname;
 	std::string avatarUrl;
+};
+
+struct ExtraRoomInfo {
+	std::string canonicalAlias;
+	std::map<std::string, MemberInfo> members;
 };
 
 enum struct RequestError : u8 {
@@ -69,10 +75,12 @@ public:
 	std::string resolveRoom(std::string alias);
 	std::vector<std::string> getJoinedRooms();
 	RoomInfo getRoomInfo(std::string roomId);
+	ExtraRoomInfo getExtraRoomInfo(std::string roomId);
 	MemberInfo getMemberInfo(std::string userId, std::string roomId = "");
 	std::string getRoomName(std::string roomId);
 	std::string getRoomTopic(std::string roomId);
 	std::string getRoomAvatar(std::string roomId);
+	std::string getCanonicalAlias(std::string roomId);
 	std::string sendEmote(std::string roomId, std::string text);
 	std::string sendNotice(std::string roomId, std::string text);
 	std::string sendText(std::string roomId, std::string text);

@@ -154,6 +154,41 @@ RoomInfo Client::getRoomInfo(std::string roomId) {
 	return info;
 }
 
+ExtraRoomInfo Client::getExtraRoomInfo(std::string roomId) {
+	roomId = resolveRoom(roomId);
+	ExtraRoomInfo info;
+	info.canonicalAlias = getCanonicalAlias(roomId);
+	
+	// next fetch the members
+	std::string path = "/_matrix/client/r0/rooms/" + urlencode(roomId) + "/joined_members";
+	json_t* ret = doRequest("GET", path);
+	if (!ret) {
+		return info;
+	}
+	json_t* joined = json_object_get(ret, "joined");
+	if (!joined || json_typeof(joined) != JSON_OBJECT) {
+		json_decref(ret);
+		return info;
+	}
+	
+	const char* mxid;
+	json_t* member;
+	json_object_foreach(joined, mxid, member) {
+		const char* displayname = json_object_get_string_value(member, "display_name");
+		const char* avatarUrl = json_object_get_string_value(member, "avatar_url");
+		MemberInfo memInfo;
+		if (displayname) {
+			memInfo.displayname = displayname;
+		}
+		if (avatarUrl) {
+			memInfo.avatarUrl = avatarUrl;
+		}
+		info.members[mxid] = memInfo;
+	}
+	json_decref(ret);
+	return info;
+}
+
 MemberInfo Client::getMemberInfo(std::string userId, std::string roomId) {
 	std::string displayname = "";
 	std::string avatarUrl = "";
@@ -231,6 +266,18 @@ std::string Client::getRoomAvatar(std::string roomId) {
 	std::string urlStr = urlCStr;
 	json_decref(ret);
 	return urlStr;
+}
+
+std::string Client::getCanonicalAlias(std::string roomId) {
+	json_t* ret = getStateEvent(roomId, "m.room.canonical_alias", "");
+	const char* aliasCStr = json_object_get_string_value(ret, "alias");
+	if (!aliasCStr) {
+		if (ret) json_decref(ret);
+		return "";
+	}
+	std::string aliasStr = aliasCStr;
+	json_decref(ret);
+	return aliasStr;
 }
 
 std::string Client::sendEmote(std::string roomId, std::string text) {
@@ -592,10 +639,10 @@ void Client::registerFilter() {
 void Client::syncLoop() {
 	u32 timeout = 60;
 	while (true) {
-		std::string token = store->getSyncToken();
 		if (stopSyncing) {
 			return;
 		}
+		std::string token = store->getSyncToken();
 		std::string filterId = store->getFilterId();
 		if (filterId == "") {
 			registerFilter();
