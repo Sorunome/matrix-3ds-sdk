@@ -611,7 +611,8 @@ void Client::registerFilter() {
 		"		\"sender\","
 		"		\"state_key\","
 		"		\"event_id\","
-		"		\"origin_server_ts\""
+		"		\"origin_server_ts\","
+		"		\"redacts\""
 		"	]"
 		"}";
 	
