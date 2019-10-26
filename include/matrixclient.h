@@ -40,6 +40,7 @@ enum struct RequestError : u8 {
 
 typedef void (*eventCallback)(std::string roomId, json_t* event);
 typedef void (*roomInfoCallback)(std::string roomId, RoomInfo info);
+typedef void (*roomLimitedCallback)(std::string roomId, std::string prevBatch);
 
 class Client {
 private:
@@ -58,6 +59,7 @@ public:
 		eventCallback leaveRoom = NULL;
 		eventCallback inviteRoom = NULL;
 		roomInfoCallback roomInfo = NULL;
+		roomLimitedCallback roomLimited = NULL;
 	} callbacks;
 	void processSync(json_t* sync);
 	void registerFilter();
@@ -95,6 +97,7 @@ public:
 	void setLeaveRoomCallback(eventCallback cb);
 	void setInviteRoomCallback(eventCallback cb);
 	void setRoomInfoCallback(roomInfoCallback cb);
+	void setRoomLimitedCallback(roomLimitedCallback cb);
 };
 
 }; // namespace Matrix

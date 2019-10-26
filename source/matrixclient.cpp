@@ -404,6 +404,10 @@ void Client::setRoomInfoCallback(roomInfoCallback cb) {
 	callbacks.roomInfo = cb;
 }
 
+void Client::setRoomLimitedCallback(roomLimitedCallback cb) {
+	callbacks.roomLimited = cb;
+}
+
 void Client::processSync(json_t* sync) {
 	json_t* rooms = json_object_get(sync, "rooms");
 	if (!rooms) {
@@ -558,6 +562,13 @@ void Client::processSync(json_t* sync) {
 				}
 			}
 			json_t* timeline = json_object_get(room, "timeline");
+			if (callbacks.roomLimited && timeline) {
+				json_t* limited = json_object_get(timeline, "limited");
+				const char* prevBatch = json_object_get_string_value(timeline, "prev_batch");
+				if (limited && prevBatch && json_typeof(limited) == JSON_TRUE) {
+					callbacks.roomLimited(roomId, prevBatch);
+				}
+			}
 			if (callbacks.event && timeline) {
 				json_t* events = json_object_get(timeline, "events");
 				if (events) {
