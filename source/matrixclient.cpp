@@ -281,11 +281,24 @@ std::string Client::getCanonicalAlias(std::string roomId) {
 }
 
 void Client::sendReadReceipt(std::string roomId, std::string eventId) {
+	roomId = resolveRoom(roomId);
 	std::string path = "/_matrix/client/r0/rooms/" + urlencode(roomId) + "/receipt/m.read/" + urlencode(eventId);
 	json_t* ret = doRequest("POST", path);
 	if (ret) {
 		json_decref(ret);
 	}
+}
+
+void Client::setTyping(std::string roomId, bool typing, u32 timeout) {
+	roomId = resolveRoom(roomId);
+	std::string userId = getUserId();
+	std::string path = "/_matrix/client/r0/rooms/" + urlencode(roomId) + "/typing/" + urlencode(userId);
+	json_t* request = json_object();
+	json_object_set_new(request, "typing", json_boolean(typing));
+	json_object_set_new(request, "timeout", json_integer(timeout));
+	json_t* ret = doRequest("PUT", path, request);
+	json_decref(request);
+	json_decref(ret);
 }
 
 std::string Client::sendEmote(std::string roomId, std::string text) {

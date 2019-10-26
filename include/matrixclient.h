@@ -84,6 +84,7 @@ public:
 	std::string getRoomAvatar(std::string roomId);
 	std::string getCanonicalAlias(std::string roomId);
 	void sendReadReceipt(std::string roomId, std::string eventId);
+	void setTyping(std::string roomId, bool typing, u32 timeout = 30000);
 	std::string sendEmote(std::string roomId, std::string text);
 	std::string sendNotice(std::string roomId, std::string text);
 	std::string sendText(std::string roomId, std::string text);
