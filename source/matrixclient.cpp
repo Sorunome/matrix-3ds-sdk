@@ -280,6 +280,14 @@ std::string Client::getCanonicalAlias(std::string roomId) {
 	return aliasStr;
 }
 
+void Client::sendReadReceipt(std::string roomId, std::string eventId) {
+	std::string path = "/_matrix/client/r0/rooms/" + urlencode(roomId) + "/receipt/m.read/" + urlencode(eventId);
+	json_t* ret = doRequest("POST", path);
+	if (ret) {
+		json_decref(ret);
+	}
+}
+
 std::string Client::sendEmote(std::string roomId, std::string text) {
 	json_t* request = json_object();
 	json_object_set_new(request, "msgtype", json_string("m.emote"));

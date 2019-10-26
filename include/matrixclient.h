@@ -83,6 +83,7 @@ public:
 	std::string getRoomTopic(std::string roomId);
 	std::string getRoomAvatar(std::string roomId);
 	std::string getCanonicalAlias(std::string roomId);
+	void sendReadReceipt(std::string roomId, std::string eventId);
 	std::string sendEmote(std::string roomId, std::string text);
 	std::string sendNotice(std::string roomId, std::string text);
 	std::string sendText(std::string roomId, std::string text);
