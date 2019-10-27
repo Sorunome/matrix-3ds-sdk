@@ -41,6 +41,7 @@ namespace Matrix {
 
 static u32 *SOC_buffer = NULL;
 bool HTTPC_inited = false;
+bool haveHttpcSupport = false;
 
 Client::Client(std::string homeserverUrl, std::string matrixToken, Store* clientStore) {
 	hsUrl = homeserverUrl;
@@ -91,11 +92,22 @@ void Client::logout() {
 	}
 }
 
-std::string Client::getUserId() {
-	if (userIdCache != "") {
-		return userIdCache;
+std::string Client::getUserId(ForceRequest forceRequest) {
+	if (forceRequest == ForceRequest::none) {
+		if (userIdCache != "") {
+			return userIdCache;
+		}
+		std::string userIdHttpc = getUserId(ForceRequest::httpc);
+		std::string userIdCurl = getUserId(ForceRequest::curl);
+		haveHttpcSupport = userIdHttpc == userIdCurl;
+		if (haveHttpcSupport) {
+			printf_top("httpc support present\n");
+		} else {
+			printf_top("httpc support not present\n");
+		}
+		return userIdCurl;
 	}
-	json_t* ret = doRequest("GET", "/_matrix/client/r0/account/whoami");
+	json_t* ret = doRequest("GET", "/_matrix/client/r0/account/whoami", NULL, 5, forceRequest);
 	const char* userIdCStr = json_object_get_string_value(ret, "user_id");
 	if (!userIdCStr) {
 		if (ret) json_decref(ret);
@@ -721,22 +733,50 @@ size_t DoRequestWriteCallback(char *contents, size_t size, size_t nmemb, void *u
 bool doingCurlRequest = false;
 bool doingHttpcRequest = false;
 
-json_t* Client::doRequest(const char* method, std::string path, json_t* body, u32 timeout) {
+json_t* Client::doRequest(const char* method, std::string path, json_t* body, u32 timeout, ForceRequest forceRequest) {
 	std::string url = hsUrl + path;
 	requestId++;
-	
-	if (!doingCurlRequest) {
+	if (forceRequest == ForceRequest::curl) {
+		while(doingCurlRequest) {
+			svcSleepThread((u64)1000000ULL);
+		}
 		doingCurlRequest = true;
 		json_t* ret = doRequestCurl(method, url, body, timeout);
 		doingCurlRequest = false;
 		return ret;
-	} else if (!doingHttpcRequest) {
+	}
+	if (forceRequest == ForceRequest::httpc) {
+		while(doingHttpcRequest) {
+			svcSleepThread((u64)1000000ULL);
+		}
 		doingHttpcRequest = true;
 		json_t* ret = doRequestHttpc(method, url, body, timeout);
 		doingHttpcRequest = false;
 		return ret;
+	}
+	if (haveHttpcSupport) {
+		while(doingCurlRequest && doingHttpcRequest) {
+			svcSleepThread((u64)1000000ULL);
+		}
+		if (!doingCurlRequest) {
+			doingCurlRequest = true;
+			json_t* ret = doRequestCurl(method, url, body, timeout);
+			doingCurlRequest = false;
+			return ret;
+		} else {
+			doingHttpcRequest = true;
+			json_t* ret = doRequestHttpc(method, url, body, timeout);
+			doingHttpcRequest = false;
+			return ret;
+		}
 	} else {
-		return doRequestCurl(method, url, body, timeout);
+		while(doingCurlRequest) {
+			svcSleepThread((u64)1000000ULL);
+		}
+		doingCurlRequest = true;
+		json_t* ret = doRequestCurl(method, url, body, timeout);
+		doingCurlRequest = false;
+		return ret;
 	}
 }
 
@@ -851,7 +891,7 @@ json_t* Client::doRequestHttpc(const char* method, std::string url, json_t* body
 		ret = httpcBeginRequest(&context);
 		if (bodyStr) free(bodyStr);
 		if (ret) {
-			printf_top("Failed to perform request %ld\n", ret);
+			printf_top("Failed to perform request %lu\n", ret);
 			httpcCloseContext(&context);
 			return NULL;
 		}
@@ -862,8 +902,10 @@ json_t* Client::doRequestHttpc(const char* method, std::string url, json_t* body
 			url = std::string(newUrl);
 		}
 	} while ((statusCode >= 301 && statusCode <= 303) || (statusCode >= 307 && statusCode <= 308));
+//	printf_top("Status code: %lu\n", statusCode);
 	ret = httpcGetDownloadSizeState(&context, NULL, &contentSize);
 	if (ret != 0) {
+		printf_top("Failed getDownloadSizeState %lu\n", ret);
 		httpcCloseContext(&context);
 		return NULL;
 	}

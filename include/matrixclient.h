@@ -38,6 +38,12 @@ enum struct RequestError : u8 {
 	timeout,
 };
 
+enum struct ForceRequest : u8 {
+	none,
+	curl,
+	httpc,
+};
+
 typedef void (*eventCallback)(std::string roomId, json_t* event);
 typedef void (*roomInfoCallback)(std::string roomId, RoomInfo info);
 typedef void (*roomLimitedCallback)(std::string roomId, std::string prevBatch);
@@ -65,7 +71,7 @@ public:
 	void registerFilter();
 	json_t* doSync(std::string token, std::string filter, u32 timeout);
 	void syncLoop();
-	json_t* doRequest(const char* method, std::string path, json_t* body = NULL, u32 timeout = 5);
+	json_t* doRequest(const char* method, std::string path, json_t* body = NULL, u32 timeout = 5, ForceRequest forceRequest = ForceRequest::none);
 	json_t* doRequestCurl(const char* method, std::string url, json_t* body, u32 timeout);
 	json_t* doRequestHttpc(const char* method, std::string url, json_t* body, u32 timeout);
 public:
@@ -73,7 +79,7 @@ public:
 	std::string getToken();
 	bool login(std::string username, std::string password);
 	void logout();
-	std::string getUserId();
+	std::string getUserId(ForceRequest forceRequest = ForceRequest::none);
 	std::string resolveRoom(std::string alias);
 	std::vector<std::string> getJoinedRooms();
 	RoomInfo getRoomInfo(std::string roomId);
