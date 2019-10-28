@@ -10,6 +10,7 @@
 #include "memorystore.h"
 #include <string>
 #include <vector>
+#include <map>
 
 #include <sys/socket.h>
 
@@ -92,22 +93,11 @@ void Client::logout() {
 	}
 }
 
-std::string Client::getUserId(ForceRequest forceRequest) {
-	if (forceRequest == ForceRequest::none) {
-		if (userIdCache != "") {
-			return userIdCache;
-		}
-		std::string userIdHttpc = getUserId(ForceRequest::httpc);
-		std::string userIdCurl = getUserId(ForceRequest::curl);
-		haveHttpcSupport = userIdHttpc == userIdCurl;
-		if (haveHttpcSupport) {
-			printf_top("httpc support present\n");
-		} else {
-			printf_top("httpc support not present\n");
-		}
-		return userIdCurl;
+std::string Client::getUserId() {
+	if (userIdCache != "") {
+		return userIdCache;
 	}
-	json_t* ret = doRequest("GET", "/_matrix/client/r0/account/whoami", NULL, 5, forceRequest);
+	json_t* ret = doRequest("GET", "/_matrix/client/r0/account/whoami");
 	const char* userIdCStr = json_object_get_string_value(ret, "user_id");
 	if (!userIdCStr) {
 		if (ret) json_decref(ret);
@@ -726,6 +716,7 @@ json_t* Client::doSync(std::string token, std::string filter, u32 timeout) {
 }
 
 size_t DoRequestWriteCallback(char *contents, size_t size, size_t nmemb, void *userp) {
+//	printf_top("----\n%s\n", ((std::string*)userp)->c_str());
 	((std::string*)userp)->append((char*)contents, size * nmemb);
 	return size * nmemb;
 }
@@ -733,50 +724,35 @@ size_t DoRequestWriteCallback(char *contents, size_t size, size_t nmemb, void *u
 bool doingCurlRequest = false;
 bool doingHttpcRequest = false;
 
-json_t* Client::doRequest(const char* method, std::string path, json_t* body, u32 timeout, ForceRequest forceRequest) {
+json_t* Client::doRequest(const char* method, std::string path, json_t* body, u32 timeout) {
 	std::string url = hsUrl + path;
 	requestId++;
-	if (forceRequest == ForceRequest::curl) {
-		while(doingCurlRequest) {
-			svcSleepThread((u64)1000000ULL);
+	return doRequestCurl(method, url, body, timeout);
+}
+
+CURLM* curl_multi_handle;
+std::map<CURLM*, CURLcode> curl_handles_done;
+Thread curl_multi_loop_thread;
+
+
+void curl_multi_loop(void* p) {
+	int openHandles = 0;
+	while(true) {
+		CURLMcode mc = curl_multi_perform(curl_multi_handle, &openHandles);
+		if (mc != CURLM_OK) {
+			printf_top("curl multi fail: %u\n", mc);
 		}
-		doingCurlRequest = true;
-		json_t* ret = doRequestCurl(method, url, body, timeout);
-		doingCurlRequest = false;
-		return ret;
-	}
-	if (forceRequest == ForceRequest::httpc) {
-		while(doingHttpcRequest) {
-			svcSleepThread((u64)1000000ULL);
+//		curl_multi_wait(curl_multi_handle, NULL, 0, 1000, &openHandles);
+		if (!openHandles) {
+			svcSleepThread((u64)1000000ULL * 100);
 		}
-		doingHttpcRequest = true;
-		json_t* ret = doRequestHttpc(method, url, body, timeout);
-		doingHttpcRequest = false;
-		return ret;
-	}
-	if (haveHttpcSupport) {
-		while(doingCurlRequest && doingHttpcRequest) {
-			svcSleepThread((u64)1000000ULL);
+		CURLMsg* msg;
+		int msgsLeft;
+		while ((msg = curl_multi_info_read(curl_multi_handle, &msgsLeft))) {
+			if (msg->msg == CURLMSG_DONE) {
+				curl_handles_done[msg->easy_handle] = msg->data.result;
+			}
 		}
-		if (!doingCurlRequest) {
-			doingCurlRequest = true;
-			json_t* ret = doRequestCurl(method, url, body, timeout);
-			doingCurlRequest = false;
-			return ret;
-		} else {
-			doingHttpcRequest = true;
-			json_t* ret = doRequestHttpc(method, url, body, timeout);
-			doingHttpcRequest = false;
-			return ret;
-		}
-	} else {
-		while(doingCurlRequest) {
-			svcSleepThread((u64)1000000ULL);
-		}
-		doingCurlRequest = true;
-		json_t* ret = doRequestCurl(method, url, body, timeout);
-		doingCurlRequest = false;
-		return ret;
 	}
 }
 
@@ -791,10 +767,13 @@ json_t* Client::doRequestCurl(const char* method, std::string url, json_t* body,
 		if (socInit(SOC_buffer, POST_BUFFERSIZE) != 0) {
 			return NULL;
 		}
+		curl_multi_handle = curl_multi_init();
+		s32 prio = 0;
+		svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
+		curl_multi_loop_thread = threadCreate(curl_multi_loop, NULL, 8*1024, prio-1, -2, true);
 	}
 
 	CURL* curl = curl_easy_init();
-	CURLcode res;
 	if (!curl) {
 		printf_top("curl init failed\n");
 		return NULL;
@@ -824,9 +803,18 @@ json_t* Client::doRequestCurl(const char* method, std::string url, json_t* body,
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout);
 	
+	curl_multi_add_handle(curl_multi_handle, curl);
+	
+	while (curl_handles_done.count(curl) == 0) {
+		svcSleepThread((u64)1000000ULL * 1);
+	}
+	
+	CURLcode res = curl_handles_done[curl];
+	curl_handles_done.erase(curl);
+	curl_multi_remove_handle(curl_multi_handle, curl);
+	
 //	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 //	curl_easy_setopt(curl, CURLOPT_STDERR, stdout);
-	res = curl_easy_perform(curl);
 	curl_easy_cleanup(curl);
 	if (bodyStr) free(bodyStr);
 	if (res != CURLE_OK) {
@@ -837,133 +825,10 @@ json_t* Client::doRequestCurl(const char* method, std::string url, json_t* body,
 		return NULL;
 	}
 
-//	printf_top("%s\n", readBuffer.c_str());
+//	printf_top("++++\n%s\n", readBuffer.c_str());
 	printf_top("Body size: %d\n", readBuffer.length());
 	json_error_t error;
 	json_t* content = json_loads(readBuffer.c_str(), 0, &error);
-	if (!content) {
-		printf_top("Failed to parse json\n");
-		return NULL;
-	}
-	return content;
-}
-
-json_t* Client::doRequestHttpc(const char* method, std::string url, json_t* body, u32 timeout) {
-	printf_top("Opening Request %d with HTTPC\n%s\n", requestId, url.c_str());
-
-	if (!HTTPC_inited) {
-		if (httpcInit(POST_BUFFERSIZE) != 0) {
-			return NULL;
-		}
-		HTTPC_inited = true;
-	}
-
-	Result ret = 0;
-	httpcContext context;
-	HTTPC_RequestMethod methodReal = HTTPC_METHOD_GET;
-	u32 statusCode = 0;
-	u32 contentSize = 0, readsize = 0, size = 0;
-	u8* buf, *lastbuf;
-	if (strcmp(method, "GET") == 0) {
-		methodReal = HTTPC_METHOD_GET;
-	} else if (strcmp(method, "PUT") == 0) {
-		methodReal = HTTPC_METHOD_PUT;
-	} else if (strcmp(method, "POST") == 0) {
-		methodReal = HTTPC_METHOD_POST;
-	} else if (strcmp(method, "DELETE") == 0) {
-		methodReal = HTTPC_METHOD_DELETE;
-	}
-	do {
-		httpcOpenContext(&context, methodReal, url.c_str(), 1);
-		httpcSetSSLOpt(&context, SSLCOPT_DisableVerify);
-		httpcSetKeepAlive(&context, HTTPC_KEEPALIVE_ENABLED);
-		httpcAddRequestHeaderField(&context, "User-Agent", "3ds");
-		if (token != "") {
-			httpcAddRequestHeaderField(&context, "Authorization", ("Bearer " + token).c_str());
-		}
-		httpcAddRequestHeaderField(&context, "Connection", "Keep-Alive");
-		char* bodyStr = NULL;
-		if (body) {
-			httpcAddRequestHeaderField(&context, "Content-Type", "application/json");
-			bodyStr = json_dumps(body, JSON_ENSURE_ASCII | JSON_ESCAPE_SLASH);
-			httpcAddPostDataRaw(&context, (u32*)bodyStr, strlen(bodyStr));
-		}
-		ret = httpcBeginRequest(&context);
-		if (bodyStr) free(bodyStr);
-		if (ret) {
-			printf_top("Failed to perform request %lu\n", ret);
-			httpcCloseContext(&context);
-			return NULL;
-		}
-		httpcGetResponseStatusCode(&context, &statusCode);
-		if ((statusCode >= 301 && statusCode <= 303) || (statusCode >= 307 && statusCode <= 308)) {
-			char newUrl[0x100];
-			ret = httpcGetResponseHeader(&context, "Location", newUrl, 0x100);
-			url = std::string(newUrl);
-		}
-	} while ((statusCode >= 301 && statusCode <= 303) || (statusCode >= 307 && statusCode <= 308));
-//	printf_top("Status code: %lu\n", statusCode);
-	ret = httpcGetDownloadSizeState(&context, NULL, &contentSize);
-	if (ret != 0) {
-		printf_top("Failed getDownloadSizeState %lu\n", ret);
-		httpcCloseContext(&context);
-		return NULL;
-	}
-
-	// Start with a single page buffer
-	buf = (u8*)malloc(0x1000);
-	if (!buf) {
-		httpcCloseContext(&context); 
-		return NULL;
-	}
-
-	u64 timeoutReal = timeout * 1000000000ULL;
-	do {
-		// This download loop resizes the buffer as data is read.
-		u64 timeStartMs = osGetTime();
-		ret = httpcDownloadDataTimeout(&context, buf+size, 0x1000, &readsize, timeoutReal);
-		u64 timeDifMs = osGetTime() - timeStartMs;
-		timeoutReal -= timeDifMs*1000000ULL;
-		size += readsize;
-		if (ret == (s32)HTTPC_RESULTCODE_DOWNLOADPENDING) {
-			lastbuf = buf; // Save the old pointer, in case realloc() fails.
-			buf = (u8*)realloc(buf, size + 0x1000);
-			if (!buf) { 
-				httpcCloseContext(&context);
-				free(lastbuf);
-				return NULL;
-			}
-		}
-	} while (ret == (s32)HTTPC_RESULTCODE_DOWNLOADPENDING);
-
-	if (ret) {
-		printf_top("httpc res not ok %lu\n", ret);
-		// let's just assume it was a timeout...
-		// TODO: better detection
-		lastRequestError = RequestError::timeout;
-		httpcCloseContext(&context);
-		free(buf);
-		return NULL;
-	}
-
-	// Resize the buffer back down to our actual final size
-	lastbuf = buf;
-	buf = (u8*)realloc(buf, size + 1); // +1 for zero-termination
-	if (!buf) { // realloc() failed.
-		httpcCloseContext(&context);
-		free(lastbuf);
-		return NULL;
-	}
-	buf[size] = '\0'; // zero-terminate
-
-	httpcCloseContext(&context);
-
-//	printf_top("%s\n", buf);
-	printf_top("Body size: %lu\n", size);
-
-	json_error_t error;
-	json_t* content = json_loads((char*)buf, 0, &error);
-	free(buf);
 	if (!content) {
 		printf_top("Failed to parse json\n");
 		return NULL;
