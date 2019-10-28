@@ -683,7 +683,8 @@ void Client::syncLoop() {
 			registerFilter();
 			filterId = store->getFilterId();
 		}
-		json_t* ret = doSync(token, filterId, timeout);
+		CURLcode res;
+		json_t* ret = doSync(token, filterId, timeout, &res);
 		if (ret) {
 			timeout = 60;
 			// set the token for the next batch
@@ -696,7 +697,7 @@ void Client::syncLoop() {
 			processSync(ret);
 			json_decref(ret);
 		} else {
-			if (lastRequestError == RequestError::timeout) {
+			if (res == CURLE_OPERATION_TIMEDOUT) {
 				timeout += 10*60;
 				printf_top("Timeout reached, increasing it to %lu\n", timeout);
 			}
@@ -705,14 +706,14 @@ void Client::syncLoop() {
 	}
 }
 
-json_t* Client::doSync(std::string token, std::string filter, u32 timeout) {
+json_t* Client::doSync(std::string token, std::string filter, u32 timeout, CURLcode* res) {
 //	printf_top("Doing sync with token %s\n", token.c_str());
 	
 	std::string query = "?full_state=false&timeout=" + std::to_string(SYNC_TIMEOUT) + "&filter=" + urlencode(filter);
 	if (token != "") {
 		query += "&since=" + token;
 	}
-	return doRequest("GET", "/_matrix/client/r0/sync" + query, NULL, timeout);
+	return doRequest("GET", "/_matrix/client/r0/sync" + query, NULL, timeout, res);
 }
 
 size_t DoRequestWriteCallback(char *contents, size_t size, size_t nmemb, void *userp) {
@@ -724,10 +725,10 @@ size_t DoRequestWriteCallback(char *contents, size_t size, size_t nmemb, void *u
 bool doingCurlRequest = false;
 bool doingHttpcRequest = false;
 
-json_t* Client::doRequest(const char* method, std::string path, json_t* body, u32 timeout) {
+json_t* Client::doRequest(const char* method, std::string path, json_t* body, u32 timeout, CURLcode* retRes) {
 	std::string url = hsUrl + path;
 	requestId++;
-	return doRequestCurl(method, url, body, timeout);
+	return doRequestCurl(method, url, body, timeout, retRes);
 }
 
 CURLM* curl_multi_handle;
@@ -743,9 +744,6 @@ void curl_multi_loop(void* p) {
 			printf_top("curl multi fail: %u\n", mc);
 		}
 //		curl_multi_wait(curl_multi_handle, NULL, 0, 1000, &openHandles);
-		if (!openHandles) {
-			svcSleepThread((u64)1000000ULL * 100);
-		}
 		CURLMsg* msg;
 		int msgsLeft;
 		while ((msg = curl_multi_info_read(curl_multi_handle, &msgsLeft))) {
@@ -753,10 +751,13 @@ void curl_multi_loop(void* p) {
 				curl_handles_done[msg->easy_handle] = msg->data.result;
 			}
 		}
+		if (!openHandles) {
+			svcSleepThread((u64)1000000ULL * 100);
+		}
 	}
 }
 
-json_t* Client::doRequestCurl(const char* method, std::string url, json_t* body, u32 timeout) {
+json_t* Client::doRequestCurl(const char* method, std::string url, json_t* body, u32 timeout, CURLcode* retRes) {
 	printf_top("Opening Request %d with CURL\n%s\n", requestId, url.c_str());
 
 	if (!SOC_buffer) {
@@ -817,11 +818,9 @@ json_t* Client::doRequestCurl(const char* method, std::string url, json_t* body,
 //	curl_easy_setopt(curl, CURLOPT_STDERR, stdout);
 	curl_easy_cleanup(curl);
 	if (bodyStr) free(bodyStr);
+	if (retRes) *retRes = res;
 	if (res != CURLE_OK) {
 		printf_top("curl res not ok %d\n", res);
-		if (res == CURLE_OPERATION_TIMEDOUT) {
-			lastRequestError = RequestError::timeout;
-		}
 		return NULL;
 	}
 

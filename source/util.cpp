@@ -25,36 +25,6 @@ std::string urlencode(std::string s) {
 	return e.str();
 }
 
-Result httpcDownloadDataTimeout(httpcContext *context, u8* buffer, u32 size, u32 *downloadedsize, u64 timeout)
-{
-	Result ret=0;
-	Result dlret=HTTPC_RESULTCODE_DOWNLOADPENDING;
-	u32 pos=0, sz=0;
-	u32 dlstartpos=0;
-	u32 dlpos=0;
-
-	if(downloadedsize)*downloadedsize = 0;
-
-	ret=httpcGetDownloadSizeState(context, &dlstartpos, NULL);
-	if(R_FAILED(ret))return ret;
-
-	while(pos < size && dlret==HTTPC_RESULTCODE_DOWNLOADPENDING)
-	{
-		sz = size - pos;
-
-		dlret=httpcReceiveDataTimeout(context, &buffer[pos], sz, timeout);
-
-		ret=httpcGetDownloadSizeState(context, &dlpos, NULL);
-		if(R_FAILED(ret))return ret;
-
-		pos = dlpos - dlstartpos;
-	}
-
-	if(downloadedsize)*downloadedsize = pos;
-
-	return dlret;
-}
-
 char* json_object_get_string_value(json_t* obj, const char* key) {
 	if (!obj) {
 		return NULL;

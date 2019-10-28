@@ -6,6 +6,7 @@
 #include <3ds.h>
 #include <jansson.h>
 #include <map>
+#include <curl/curl.h>
 
 namespace Matrix {
 
@@ -33,11 +34,6 @@ struct ExtraRoomInfo {
 	std::map<std::string, MemberInfo> members;
 };
 
-enum struct RequestError : u8 {
-	none,
-	timeout,
-};
-
 typedef void (*eventCallback)(std::string roomId, json_t* event);
 typedef void (*roomInfoCallback)(std::string roomId, RoomInfo info);
 typedef void (*roomLimitedCallback)(std::string roomId, std::string prevBatch);
@@ -52,7 +48,6 @@ private:
 	bool stopSyncing = false;
 	bool isSyncing = false;
 	Thread syncThread;
-	RequestError lastRequestError;
 	struct {
 		eventCallback event = NULL;
 		eventCallback leaveRoom = NULL;
@@ -62,9 +57,9 @@ private:
 	} callbacks;
 	void processSync(json_t* sync);
 	void registerFilter();
-	json_t* doSync(std::string token, std::string filter, u32 timeout);
-	json_t* doRequest(const char* method, std::string path, json_t* body = NULL, u32 timeout = 5);
-	json_t* doRequestCurl(const char* method, std::string url, json_t* body, u32 timeout);
+	json_t* doSync(std::string token, std::string filter, u32 timeout, CURLcode* res);
+	json_t* doRequest(const char* method, std::string path, json_t* body = NULL, u32 timeout = 5, CURLcode* retRes = NULL);
+	json_t* doRequestCurl(const char* method, std::string url, json_t* body, u32 timeout, CURLcode* retRes);
 public:
 	Client(std::string homeserverUrl, std::string matrixToken = "", Store* clientStore = NULL);
 	std::string getToken();
